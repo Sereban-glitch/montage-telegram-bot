@@ -44,9 +44,9 @@ export function MiniApp({
         {tab === 'tasks' && <TasksTab jobs={jobs} />}
       </div>
 
-      {/* Нижняя навигация iOS: парящее матовое стекло */}
+      {/* Нижняя навигация iOS: парящее матовое стекло (скрыто на десктопе) */}
       <nav
-        className="glass-strong fixed bottom-0 left-1/2 z-40 w-full max-w-md -translate-x-1/2 pb-safe sm:max-w-md"
+        className="glass-strong fixed bottom-0 left-1/2 z-40 w-full max-w-md -translate-x-1/2 pb-safe sm:max-w-md md:hidden"
         aria-label="Основная навигация"
       >
         <div className="grid grid-cols-4 px-2 pt-1.5">

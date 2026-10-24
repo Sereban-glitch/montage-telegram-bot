@@ -15,9 +15,12 @@ export type TgWebApp = {
   initDataUnsafe: { user?: { id: number; first_name?: string; username?: string; photo_url?: string } };
   colorScheme: 'light' | 'dark';
   themeParams: TgThemeParams;
+  platform?: string;
+  isExpanded?: boolean;
   ready: () => void;
   expand: () => void;
   close: () => void;
+  requestFullscreen?: () => void;
   disableVerticalSwipes?: () => void;
   setHeaderColor?: (color: string) => void;
   setBackgroundColor?: (color: string) => void;
@@ -35,7 +38,13 @@ declare global {
 
 export function getTg(): TgWebApp | null {
   if (typeof window === 'undefined') return null;
-  return window.Telegram?.WebApp?.initData !== undefined ? (window.Telegram.WebApp as TgWebApp) : null;
+  return window.Telegram?.WebApp ? (window.Telegram.WebApp as TgWebApp) : null;
+}
+
+export function isTgDesktop(): boolean {
+  const tg = getTg();
+  const platform = (tg?.platform || '').toLowerCase();
+  return ['tdesktop', 'macos', 'web', 'webk', 'weba'].includes(platform) || (typeof window !== 'undefined' && window.innerWidth >= 768);
 }
 
 export function tgInitData(): string | null {
