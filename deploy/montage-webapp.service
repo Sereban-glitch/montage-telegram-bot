@@ -1,0 +1,17 @@
+[Unit]
+Description=Montage Kitchen WebApp (Next.js 16 Mini App & Admin)
+After=network.target
+
+[Service]
+Type=simple
+User=qwerty
+WorkingDirectory=/home/qwerty/projects/montage-telegram-bot
+Environment=NODE_ENV=production
+Environment=PORT=3000
+Environment=DATABASE_URL=file:./db/custom.db
+ExecStart=/usr/local/bin/node /home/qwerty/projects/montage-telegram-bot/.next/standalone/server.js
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

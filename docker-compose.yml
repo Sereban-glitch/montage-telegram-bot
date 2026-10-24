@@ -1,0 +1,67 @@
+version: '3.8'
+
+services:
+  # 1. Telegram Mini App Frontend & Backend REST API + Admin Panel
+  webapp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: montage_webapp
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=file:/app/db/custom.db
+    volumes:
+      - ./db:/app/db
+      - ./public/demo:/app/public/demo
+      - ./public/showcase:/app/public/showcase
+      - ./media:/app/media
+    networks:
+      - montage_net
+
+  # 2. Telegram Bot (aiogram 3)
+  bot:
+    build:
+      context: ./services/bot
+      dockerfile: Dockerfile
+    container_name: montage_bot
+    restart: unless-stopped
+    depends_on:
+      - webapp
+    environment:
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - WEBAPP_URL=${WEBAPP_URL:-http://webapp:3000}
+      - DATABASE_PATH=/app/db/custom.db
+      - MEDIA_DIR=/app/media
+    volumes:
+      - ./db:/app/db
+      - ./media:/app/media
+      - ./public:/app/public
+    networks:
+      - montage_net
+
+  # 3. Python FIFO Worker (Последовательный рендеринг, защита 12 ГБ ОЗУ)
+  worker:
+    build:
+      context: ./services/worker
+      dockerfile: Dockerfile
+    container_name: montage_worker
+    restart: unless-stopped
+    depends_on:
+      - webapp
+    environment:
+      - DATABASE_PATH=/app/db/custom.db
+      - MEDIA_DIR=/app/media
+      - VIDEO_MONTAGE_DIR=/app/video-montage
+    volumes:
+      - ./db:/app/db
+      - ./media:/app/media
+      - ./public:/app/public
+    networks:
+      - montage_net
+
+networks:
+  montage_net:
+    driver: bridge

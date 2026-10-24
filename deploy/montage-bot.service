@@ -1,0 +1,15 @@
+[Unit]
+Description=Montage Kitchen Telegram Bot (aiogram 3)
+After=network.target montage-webapp.service
+
+[Service]
+Type=simple
+User=qwerty
+WorkingDirectory=/home/qwerty/projects/montage-telegram-bot/services/bot
+EnvironmentFile=/home/qwerty/projects/montage-telegram-bot/.env
+ExecStart=/usr/bin/python3 main.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
