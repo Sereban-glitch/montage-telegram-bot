@@ -144,23 +144,32 @@ async def create_job(
 # --- Клавиатуры -------------------------------------------------------------
 
 def main_menu_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="🎬 Открыть Монтажную Кухню (Mini App)",
-                    web_app=WebAppInfo(url=WEBAPP_URL),
-                )
-            ],
-            [
-                InlineKeyboardButton(text="📊 Мои задачи и статус", callback_data="my_tasks"),
-                InlineKeyboardButton(text="🌟 Витрина готовых работ", callback_data="showcase"),
-            ],
-            [
-                InlineKeyboardButton(text="ℹ️ Помощь и форматы", callback_data="help_info"),
-            ],
-        ]
-    )
+    buttons = []
+    if WEBAPP_URL.startswith("https://"):
+        buttons.append([
+            InlineKeyboardButton(
+                text="🎬 Открыть Монтажную Кухню (Mini App)",
+                web_app=WebAppInfo(url=WEBAPP_URL),
+            )
+        ])
+    else:
+        buttons.append([
+            InlineKeyboardButton(
+                text="🎬 Монтажная Кухня (локальный режим)",
+                callback_data="webapp_local_info",
+            )
+        ])
+
+    buttons.extend([
+        [
+            InlineKeyboardButton(text="📊 Мои задачи и статус", callback_data="my_tasks"),
+            InlineKeyboardButton(text="🌟 Витрина готовых работ", callback_data="showcase"),
+        ],
+        [
+            InlineKeyboardButton(text="ℹ️ Помощь и форматы", callback_data="help_info"),
+        ],
+    ])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
 # --- Команды бота -----------------------------------------------------------
@@ -326,25 +335,32 @@ async def on_setup_format(callback: types.CallbackQuery):
         )
         await db.commit()
 
-    await callback.message.edit_text(
-        f"🎬 **Задача принята в конвейер!**\n\n"
-        f"• Формат: **{job_type.upper()}**\n"
-        f"• ID задачи: `{job_id}`\n"
-        f"• Статус: **В очереди (FIFO)**\n\n"
-        "Воркер уведомит вас о начале рендеринга и пришлёт готовый файл сразу по окончании.",
-        reply_markup=InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    InlineKeyboardButton(
-                        text="📱 Открыть статус в Mini App",
-                        web_app=WebAppInfo(url=f"{WEBAPP_URL}"),
-                    )
-                ]
-            ]
-        ),
-        parse_mode="Markdown",
-    )
-    await callback.answer()
+        kb_buttons = []
+        if WEBAPP_URL.startswith("https://"):
+            kb_buttons.append([
+                InlineKeyboardButton(
+                    text="📱 Открыть статус в Mini App",
+                    web_app=WebAppInfo(url=WEBAPP_URL),
+                )
+            ])
+        else:
+            kb_buttons.append([
+                InlineKeyboardButton(
+                    text="📊 Проверить статус задачи",
+                    callback_data="my_tasks",
+                )
+            ])
+
+        await callback.message.edit_text(
+            f"🎬 **Задача принята в конвейер!**\n\n"
+            f"• Формат: **{job_type.upper()}**\n"
+            f"• ID задачи: `{job_id}`\n"
+            f"• Статус: **В очереди (FIFO)**\n\n"
+            "Воркер уведомит вас о начале рендеринга и пришлёт готовый файл сразу по окончании.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=kb_buttons),
+            parse_mode="Markdown",
+        )
+        await callback.answer()
 
 
 # --- Обработка ссылок на YouTube --------------------------------------------
@@ -378,6 +394,70 @@ async def handle_url(message: types.Message):
         reply_markup=kb,
         parse_mode="Markdown",
     )
+
+
+async def safe_callback_answer(callback: types.CallbackQuery, text: str | None = None, show_alert: bool = False):
+    try:
+        await callback.answer(text=text, show_alert=show_alert)
+    except Exception:
+        pass
+
+@dp.callback_query(F.data == "my_tasks")
+async def on_my_tasks(callback: types.CallbackQuery):
+    async with aiosqlite.connect(DB_PATH) as db:
+        user = await get_or_create_user(db, callback.from_user)
+        async with db.execute(
+            """
+            SELECT id, type, status, stageLabel, progress, resultUrl
+            FROM Job
+            WHERE userId = ?
+            ORDER BY createdAt DESC LIMIT 5
+            """,
+            (user["id"],),
+        ) as cur:
+            jobs = await cur.fetchall()
+
+    if not jobs:
+        await callback.message.answer("📭 У вас пока нет созданных задач монтажа.\nОтправьте видео или ссылку в чат, чтобы начать!")
+    else:
+        lines = ["📊 **Ваши последние задачи:**\n"]
+        for j in jobs:
+            st_icon = "🟢" if j[2] == "completed" else ("⚙️" if j[2] == "processing" else "⏳")
+            lines.append(f"{st_icon} **{j[1].upper()}** ({j[4]}%): {j[3] or j[2]}")
+        await callback.message.answer("\n".join(lines), parse_mode="Markdown")
+    await safe_callback_answer(callback)
+
+
+@dp.callback_query(F.data == "showcase")
+async def on_showcase(callback: types.CallbackQuery):
+    text = (
+        "🌟 **Витрина готовых работ:**\n\n"
+        "1. 📱 **КСУ: правительство не может ограничивать права** (1080×1920)\n"
+        "   Двуязычные субтитры укр → рус, нормализация EBU R128\n"
+        "2. 📱 **Судебное заседание: отвод судьи** (1080×1920)\n"
+        "   Динамичная нарезка, вертикальная обложка с золотой рамкой\n"
+        "3. 🖥️ **Полное заседание суда по ст. 114-1** (1280×720)\n"
+        "   Вырезка пауз Whisper, таймкоды для описания\n\n"
+        "💡 Для интерактивного просмотра видео и обложек откройте Mini App!"
+    )
+    await callback.message.answer(text, parse_mode="Markdown")
+    await safe_callback_answer(callback)
+
+
+@dp.callback_query(F.data == "help_info")
+async def on_help_info(callback: types.CallbackQuery):
+    await cmd_help(callback.message)
+    await safe_callback_answer(callback)
+
+
+@dp.callback_query(F.data == "webapp_local_info")
+async def on_webapp_local_info(callback: types.CallbackQuery):
+    await callback.message.answer(
+        "🎬 Веб-интерфейс «Монтажная Кухня» запущен!\n"
+        "Для открытия Mini App внутри Telegram подключается защищённый HTTPS-туннель.",
+        parse_mode="Markdown",
+    )
+    await callback.answer()
 
 
 # --- Фоновый мониторинг завершённых задач ------------------------------------
@@ -475,17 +555,20 @@ async def main():
 
     bot = Bot(token=BOT_TOKEN)
 
-    # Настраиваем кнопку меню Mini App в интерфейсе Telegram
-    try:
-        await bot.set_chat_menu_button(
-            menu_button=MenuButtonWebApp(
-                text="Монтажная Кухня",
-                web_app=WebAppInfo(url=WEBAPP_URL),
+    # Настраиваем кнопку меню Mini App в интерфейсе Telegram (только если есть валидный HTTPS)
+    if WEBAPP_URL.startswith("https://"):
+        try:
+            await bot.set_chat_menu_button(
+                menu_button=MenuButtonWebApp(
+                    text="Монтажная Кухня",
+                    web_app=WebAppInfo(url=WEBAPP_URL),
+                )
             )
-        )
-        logger.info(f"Menu Button WebApp установлен на {WEBAPP_URL}")
-    except Exception as e:
-        logger.warning(f"Не удалось настроить Menu Button: {e}")
+            logger.info(f"Menu Button WebApp установлен на {WEBAPP_URL}")
+        except Exception as e:
+            logger.warning(f"Не удалось настроить Menu Button: {e}")
+    else:
+        logger.info(f"WEBAPP_URL не использует HTTPS ({WEBAPP_URL}), Menu Button пропущен")
 
     # Запускаем фоновый notifier
     asyncio.create_task(background_job_notifier(bot))

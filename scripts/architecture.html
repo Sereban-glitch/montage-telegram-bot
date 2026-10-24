@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; font-family:'SF Pro Text','Segoe UI',Roboto,Arial,sans-serif; }
+  body { background:#0b1220; color:#e8eef4; width:1680px; padding:40px 48px; }
+  h1 { font-size:26px; letter-spacing:.2px; display:flex; align-items:center; gap:12px; }
+  h1 .badge { background:#2481cc; color:#fff; font-size:12px; font-weight:600; padding:4px 10px; border-radius:20px; letter-spacing:.5px; }
+  .sub { color:#7d92a8; font-size:13px; margin:6px 0 26px; }
+  .grid { display:grid; grid-template-columns: 300px 1fr 300px; gap:24px; }
+  .col { display:flex; flex-direction:column; gap:20px; }
+  .box { background:#121c2c; border:1px solid #24344a; border-radius:14px; padding:16px 18px; }
+  .box.telegram { background:linear-gradient(160deg,#123054,#0d1e33); border-color:#2481cc; }
+  .box.engine { background:linear-gradient(160deg,#2b1d10,#1a130a); border-color:#8a5a24; }
+  .box h2 { font-size:15px; margin-bottom:3px; display:flex; align-items:center; gap:8px; }
+  .box h2 .ic { width:22px; height:22px; border-radius:6px; display:inline-flex; align-items:center; justify-content:center; font-size:12px; background:#2481cc; }
+  .box.engine h2 .ic { background:#8a5a24; }
+  .box .tech { color:#6f8aa3; font-size:11px; margin-bottom:8px; }
+  .box ul { list-style:none; }
+  .box li { font-size:12px; color:#b9c8d6; padding:2.5px 0 2.5px 14px; position:relative; }
+  .box li::before { content:''; position:absolute; left:0; top:9px; width:5px; height:5px; border-radius:50%; background:#3390ec; }
+  .box.engine li::before { background:#d99a3d; }
+  .flow { display:flex; flex-direction:column; gap:0; }
+  .lane { background:#101a2a; border:1px solid #1e2c40; border-radius:14px; padding:14px 16px; }
+  .lane h3 { font-size:12px; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px; color:#5f748d; }
+  .steps { display:flex; align-items:stretch; gap:8px; }
+  .step { flex:1; background:#16233a; border:1px solid #263952; border-radius:10px; padding:9px 10px; text-align:center; }
+  .step b { display:block; font-size:12px; color:#e8eef4; margin-bottom:2px; }
+  .step span { font-size:10px; color:#7d92a8; }
+  .arrow { align-self:center; color:#3390ec; font-size:16px; flex:0 0 auto; }
+  .linkrow { display:flex; align-items:center; gap:8px; margin-top:10px; font-size:11px; color:#8fa6bc; }
+  .linkrow .pipe { flex:1; border-top:1.5px dashed #2c4260; }
+  .linkrow b { color:#3390ec; font-weight:600; }
+  .pill { display:inline-block; background:#2481cc22; border:1px solid #2481cc66; color:#7ab5f2; border-radius:14px; font-size:10.5px; padding:2.5px 9px; margin-right:6px; margin-top:4px; }
+  .warn { background:#2a1c10; border:1px solid #7a4a1e; border-radius:10px; padding:10px 14px; font-size:12px; color:#e8c48f; margin-top:18px; }
+  .warn b { color:#f5b04a; }
+  .footer { margin-top:22px; display:flex; gap:14px; align-items:center; color:#5f748d; font-size:11.5px; }
+  .legend { display:flex; gap:16px; }
+  .legend div { display:flex; align-items:center; gap:6px; }
+  .dot { width:9px; height:9px; border-radius:50%; }
+</style>
+</head>
+<body>
+  <h1>🎬 Монтажная Кухня — архитектура взаимодействия <span class="badge">Sereban-glitch-video-montage v2.0.0</span></h1>
+  <div class="sub">Telegram-бот + Mini App + FastAPI + FIFO-воркер · сервер 12 ГБ ОЗУ · docker-compose</div>
+
+  <div class="grid">
+    <div class="col">
+      <div class="box telegram">
+        <h2><span class="ic">👤</span> Пользователи</h2>
+        <div class="tech">Telegram: владелец канала · друзья · клиенты</div>
+        <ul>
+          <li>Файл / YouTube-ссылка в чат</li>
+          <li>Mini App: титулы, субтитры укр→рус, кадр обложки</li>
+          <li>Статусы и final.mp4 в чате</li>
+        </ul>
+      </div>
+      <div class="box">
+        <h2><span class="ic">🤖</span> Telegram-бот</h2>
+        <div class="tech">Python · aiogram 3 · polling</div>
+        <ul>
+          <li>Приём видео/документов/ссылок</li>
+          <li>Кнопка WebApp (https)</li>
+          <li>Notifier: статусы → чат каждые 3 с</li>
+          <li>sendVideo (≤49 МБ) или ссылка</li>
+        </ul>
+      </div>
+      <div class="box">
+        <h2><span class="ic">🛡️</span> Админ-панель</h2>
+        <div class="tech">раздел того же webapp · role=admin</div>
+        <ul>
+          <li>Очередь FIFO + журнал воркера</li>
+          <li>ОЗУ / CPU / loadavg телеметрия</li>
+          <li>Лимиты пользователей (3/день)</li>
+          <li>YouTube-каналы · витрина · настройки</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="flow">
+      <div class="lane">
+        <h3>Канал управления</h3>
+        <div class="steps">
+          <div class="step"><b>📱 Mini App</b><span>Next.js 16 · React 19 · Tailwind 4<br/>initData → сессия</span></div>
+          <div class="arrow">⇄</div>
+          <div class="step"><b>⚙️ Backend API</b><span>FastAPI · SQLAlchemy<br/>REST /api/* · квоты</span></div>
+          <div class="arrow">⇄</div>
+          <div class="step"><b>🗄️ БД + том</b><span>SQLite / PostgreSQL<br/>jobs = FIFO-очередь</span></div>
+          <div class="arrow">⇄</div>
+          <div class="step"><b>🎥 Worker</b><span>FIFO · 1 слот рендера<br/>mem_limit 8g</span></div>
+        </div>
+        <div class="linkrow"><b>REST</b><div class="pipe"></div>POST /api/jobs · GET /api/jobs/{id} · DELETE cancel<div class="pipe"></div><b>X-Bot-Key</b></div>
+        <div class="linkrow"><b>/api/bot/notifications</b><div class="pipe"></div>бот узнаёт о смене статуса и доставляет результат<div class="pipe"></div><b>cleanup</b></div>
+      </div>
+
+      <div class="lane" style="margin-top:18px;">
+        <h3>Конвейер задачи (queued → processing → completed)</h3>
+        <div class="steps">
+          <div class="step"><b>1 · Download</b><span>yt-dlp / файл из чата<br/>0–8%</span></div>
+          <div class="arrow">→</div>
+          <div class="step"><b>2 · Audio</b><span>ffmpeg → 16к WAV<br/>8–14%</span></div>
+          <div class="arrow">→</div>
+          <div class="step"><b>3 · Whisper</b><span>small / large-v3-turbo<br/>int8 · 14–38%</span></div>
+          <div class="arrow">→</div>
+          <div class="step"><b>4 · Нарезка</b><span>edits + captions<br/>audit_gaps (long)<br/>38–46%</span></div>
+          <div class="arrow">→</div>
+          <div class="step"><b>5 · Рендер</b><span>render_short /<br/>render_segments<br/>46–88%</span></div>
+          <div class="arrow">→</div>
+          <div class="step"><b>6 · Обложка</b><span>1080×1920 / 720p<br/>главы · 88–96%</span></div>
+          <div class="arrow">→</div>
+          <div class="step"><b>7 · Delivery</b><span>loudnorm −14 LUFS<br/>→ чат · 100%</span></div>
+        </div>
+        <div class="linkrow"><span class="pill">изоляция /data/media/&lt;job_id&gt;/</span><span class="pill">sequential segments = защита 12 ГБ</span><span class="pill">cleanup после доставки</span></div>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="box engine">
+        <h2><span class="ic">🧰</span> Движок v2.0.0</h2>
+        <div class="tech">клон репозитория · subprocess из воркера</div>
+        <ul>
+          <li>short.config.json → render_short.py</li>
+          <li>thumbnail.short.json → thumb_short.py</li>
+          <li>long.config.json → audit_gaps + render_segments</li>
+          <li>profiles/humanrightszp.json</li>
+          <li>DejaVu Sans · субтитры по пикселям</li>
+          <li>EBU R128: I=−14 · TP=−1.5 · LRA=11</li>
+        </ul>
+      </div>
+      <div class="box">
+        <h2><span class="ic">▶️</span> YouTube</h2>
+        <div class="tech">OAuth · scripts/publish/</div>
+        <ul>
+          <li>yt-dlp: скачивание ≤1080p</li>
+          <li>upload_youtube.py: private по умолчанию</li>
+          <li>metadata.json: главы в описании</li>
+          <li>verify_upload.py: контроль статуса</li>
+        </ul>
+      </div>
+      <div class="box">
+        <h2><span class="ic">🔒</span> Безопасность</h2>
+        <div class="tech">поверх всего стека</div>
+        <ul>
+          <li>initData HMAC-SHA256 · TTL 24 ч</li>
+          <li>cookie-сессии httpOnly</li>
+          <li>X-Bot-Key между сервисами</li>
+          <li>файловая изоляция задач</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="warn"><b>Критично:</b> параллельный рендер запрещён по построению — атомарный claim_next() в FIFO гарантирует один тяжёлый рендер за раз (пик воркера ≈ 6 ГБ из mem_limit 8g) даже при десяти заказах подряд.</div>
+  <div class="footer">
+    <div class="legend">
+      <div><span class="dot" style="background:#3390ec"></span>REST / приватная docker-сеть</div>
+      <div><span class="dot" style="background:#d99a3d"></span>subprocess-вызовы движка</div>
+      <div><span class="dot" style="background:#45c05a"></span>итог: final.mp4 в чат / YouTube private</div>
+    </div>
+    <div style="margin-left:auto">Монтажная Кухня · 2026</div>
+  </div>
+</body>
+</html>
