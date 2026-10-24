@@ -1,6 +1,7 @@
 'use client';
 
-// Вкладка «Мои задачи»: прогресс рендера, история, скачивание final.mp4
+// Вкладка «Мои задачи»: прогресс рендера, история, скачивание final.mp4.
+// Дизайн: стеклянные карточки-капсулы, светящиеся прогресс-бары, iOS-бейджи.
 
 import { useState } from 'react';
 import {
@@ -19,7 +20,6 @@ import {
 import { api, fmtRam, fmtTime } from '@/lib/client-api';
 import { hapticTap } from '@/lib/telegram-client';
 import type { Job } from '@/lib/types';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
@@ -29,19 +29,49 @@ function TypeIcon({ type, className }: { type: Job['type']; className?: string }
   return type === 'long' ? <Hourglass className={className} /> : <Film className={className} />;
 }
 
-function statusBadge(status: Job['status']) {
+function StatusBadge({ status }: { status: Job['status'] }) {
+  const base = 'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10.5px] font-semibold';
   switch (status) {
     case 'queued':
-      return <Badge variant="secondary" className="gap-1 text-[10px]"><Clock className="h-3 w-3" /> В очереди</Badge>;
+      return (
+        <span className={`${base} bg-warning/12 text-warning dark:bg-warning/20`}>
+          <Clock className="h-3 w-3" /> В очереди
+        </span>
+      );
     case 'processing':
-      return <Badge className="gap-1 text-[10px] bg-primary text-primary-foreground"><Loader2 className="h-3 w-3 animate-spin" /> В работе</Badge>;
+      return (
+        <span className={`${base} bg-primary/12 text-primary dark:bg-primary/25`}>
+          <Loader2 className="h-3 w-3 animate-spin" /> В работе
+        </span>
+      );
     case 'completed':
-      return <Badge className="gap-1 text-[10px] bg-emerald-600 text-white"><CheckCircle2 className="h-3 w-3" /> Готово</Badge>;
+      return (
+        <span className={`${base} bg-success/15 text-success dark:bg-success/20`}>
+          <CheckCircle2 className="h-3 w-3" /> Готово
+        </span>
+      );
     case 'failed':
-      return <Badge variant="destructive" className="gap-1 text-[10px]"><XCircle className="h-3 w-3" /> Ошибка</Badge>;
+      return (
+        <span className={`${base} bg-destructive/12 text-destructive dark:bg-destructive/25`}>
+          <XCircle className="h-3 w-3" /> Ошибка
+        </span>
+      );
     default:
-      return <Badge variant="outline" className="gap-1 text-[10px] text-muted-foreground"><Ban className="h-3 w-3" /> Отменено</Badge>;
+      return (
+        <span className={`${base} bg-black/[0.06] text-muted-foreground dark:bg-white/[0.10]`}>
+          <Ban className="h-3 w-3" /> Отменено
+        </span>
+      );
   }
+}
+
+function Chip({ icon, children }: { icon: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-black/[0.045] px-2 py-0.5 text-[10.5px] font-medium text-muted-foreground dark:bg-white/[0.08]">
+      {icon}
+      {children}
+    </span>
+  );
 }
 
 export function TasksTab({ jobs }: { jobs: Job[] }) {
@@ -64,60 +94,65 @@ export function TasksTab({ jobs }: { jobs: Job[] }) {
   };
 
   return (
-    <div className="space-y-4 pb-4">
+    <div className="space-y-6 pb-6">
+      {/* Заголовок экрана */}
+      <div className="space-y-1 px-1">
+        <h2 className="text-[26px] font-bold leading-tight tracking-tight">Мои задачи</h2>
+        <p className="text-[13px] text-muted-foreground">
+          FIFO-очередь рендера: один слот, бережём 12 ГБ ОЗУ сервера
+        </p>
+      </div>
+
       {/* Активные задачи */}
       {active.length > 0 && (
         <section aria-label="Активные задачи" className="space-y-3">
-          <h3 className="text-sm font-semibold flex items-center gap-2">
+          <h3 className="flex items-center gap-2 px-1 text-[15px] font-bold tracking-tight">
             На конвейере
-            <span className="text-xs font-normal text-muted-foreground">{active.length} активн.</span>
+            <span className="rounded-full bg-primary/12 px-2 py-0.5 text-[11px] font-bold tabular-nums text-primary dark:bg-primary/20">
+              {active.length}
+            </span>
           </h3>
           {active.map((job) => (
-            <Card key={job.id} className="overflow-hidden border-primary/30">
-              <CardContent className="p-4 space-y-3">
-                <div className="flex items-center gap-2.5">
-                  <div className="h-9 w-9 rounded-lg bg-primary/15 flex items-center justify-center shrink-0">
-                    <TypeIcon type={job.type} className="h-4.5 w-4.5 text-primary" />
+            <Card
+              key={job.id}
+              className="animate-fade-up gap-0 overflow-hidden border-primary/30 py-4 shadow-[0_2px_16px_rgb(10_132_255/0.10),0_16px_44px_rgb(10_132_255/0.08)] dark:border-primary/40"
+            >
+              <CardContent className="space-y-3.5 px-4">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary/12 dark:bg-primary/22">
+                    <TypeIcon type={job.type} className="h-5 w-5 text-primary" />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium truncate">{job.sourceName ?? 'Видео'}</p>
-                    <p className="text-xs text-muted-foreground">
+                    <p className="truncate text-[14px] font-semibold">{job.sourceName ?? 'Видео'}</p>
+                    <p className="text-[11.5px] text-muted-foreground">
                       {job.type === 'long' ? 'Long · 1280×720' : 'Short · 1080×1920'} · с {fmtTime(job.createdAt)}
                     </p>
                   </div>
-                  {statusBadge(job.status)}
+                  <StatusBadge status={job.status} />
                 </div>
 
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between text-xs">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-[12px]">
                     <span className="text-muted-foreground">{job.stageLabel ?? 'Ожидание слота рендера…'}</span>
-                    <span className="font-semibold tabular-nums">{job.progress}%</span>
+                    <span className="font-bold tabular-nums text-primary">{job.progress}%</span>
                   </div>
                   <Progress value={job.progress} className="h-2" />
                 </div>
 
-                <div className="flex items-center gap-2 flex-wrap text-[11px] text-muted-foreground">
+                <div className="flex flex-wrap items-center gap-1.5">
                   {job.status === 'queued' && job.queuePosition > 0 && (
-                    <span className="inline-flex items-center gap-1 rounded bg-muted px-1.5 py-0.5">
-                      <Clock className="h-3 w-3" /> Позиция в очереди: {job.queuePosition}
-                    </span>
+                    <Chip icon={<Clock className="h-3 w-3" />}>Позиция: {job.queuePosition}</Chip>
                   )}
                   {job.status === 'processing' && job.ramMb && (
-                    <span className="inline-flex items-center gap-1 rounded bg-muted px-1.5 py-0.5">
-                      <MemoryStick className="h-3 w-3" /> ОЗУ воркера: {fmtRam(job.ramMb)} / 12 ГБ
-                    </span>
+                    <Chip icon={<MemoryStick className="h-3 w-3" />}>ОЗУ {fmtRam(job.ramMb)} / 12 ГБ</Chip>
                   )}
-                  {job.status === 'processing' && (
-                    <span className="inline-flex items-center gap-1 rounded bg-muted px-1.5 py-0.5">
-                      <Cpu className="h-3 w-3" /> FIFO · один слот рендера
-                    </span>
-                  )}
+                  <Chip icon={<Cpu className="h-3 w-3" />}>FIFO · один слот</Chip>
                 </div>
 
                 <Button
                   variant="outline"
                   size="sm"
-                  className="w-full h-8 text-xs text-destructive hover:text-destructive"
+                  className="h-9 w-full text-[12.5px] text-muted-foreground hover:text-destructive"
                   onClick={() => cancel(job.id)}
                   disabled={cancelling === job.id}
                 >
@@ -132,51 +167,56 @@ export function TasksTab({ jobs }: { jobs: Job[] }) {
 
       {/* История */}
       <section aria-label="История задач" className="space-y-3">
-        <h3 className="text-sm font-semibold flex items-center gap-2">
-          <ListVideo className="h-4 w-4 text-primary" /> История
+        <h3 className="flex items-center gap-2 px-1 text-[15px] font-bold tracking-tight">
+          <ListVideo className="h-4 w-4 text-primary" />
+          История
         </h3>
 
         {history.length === 0 && active.length === 0 && (
-          <div className="rounded-xl border border-dashed border-border py-10 flex flex-col items-center gap-3 text-center px-6">
-            <div className="h-12 w-12 rounded-2xl bg-muted flex items-center justify-center">
-              <Film className="h-6 w-6 text-muted-foreground" />
+          <div className="flex flex-col items-center gap-3.5 rounded-3xl border border-dashed border-hairline px-8 py-12 text-center">
+            <div className="flex h-14 w-14 items-center justify-center rounded-3xl bg-primary/10 dark:bg-primary/18">
+              <Film className="h-7 w-7 text-primary" />
             </div>
-            <p className="text-sm font-medium">Пока пусто</p>
-            <p className="text-xs text-muted-foreground">
-              Закажите монтаж во вкладке Shorts или Long — бот пришлёт готовый final.mp4 сюда и в чат.
-            </p>
+            <div className="space-y-1">
+              <p className="text-[14px] font-semibold">Пока пусто</p>
+              <p className="text-[12px] leading-relaxed text-muted-foreground">
+                Закажите монтаж во вкладке Shorts или Long — бот пришлёт готовый final.mp4 сюда и в чат.
+              </p>
+            </div>
           </div>
         )}
 
         {history.map((job) => (
-          <Card key={job.id}>
-            <CardContent className="p-3.5">
+          <Card key={job.id} className="gap-0 py-3.5">
+            <CardContent className="px-3.5">
               <div className="flex items-center gap-3">
                 <div
-                  className="h-14 w-10 rounded-md bg-muted bg-cover bg-center shrink-0 border border-border"
+                  className="h-[60px] w-11 shrink-0 rounded-2xl border border-hairline bg-muted bg-cover bg-center"
                   style={{ backgroundImage: job.thumbUrl ? `url('${job.thumbUrl}')` : undefined }}
                   role="img"
                   aria-label="Обложка результата"
                 />
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium truncate">{job.sourceName ?? 'Видео'}</p>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="truncate text-[13.5px] font-semibold">{job.sourceName ?? 'Видео'}</p>
+                  <p className="text-[11.5px] text-muted-foreground">
                     {job.type === 'long' ? 'Long' : 'Short'} · {fmtTime(job.createdAt)}
                     {job.resultUrl ? ' · final.mp4' : ''}
                   </p>
-                  <div className="mt-1">{statusBadge(job.status)}</div>
+                  <div className="mt-1.5">
+                    <StatusBadge status={job.status} />
+                  </div>
                 </div>
                 {job.status === 'completed' && job.resultUrl && (
                   <a href={job.resultUrl} download={`final_${job.type}_${job.id.slice(0, 6)}.mp4`}>
-                    <Button size="sm" className="h-8 gap-1.5 text-xs">
+                    <Button size="sm" className="h-9 gap-1.5 text-[12.5px]">
                       <Download className="h-3.5 w-3.5" /> Скачать
                     </Button>
                   </a>
                 )}
               </div>
-              {job.error && <p className="mt-2 text-xs text-destructive">{job.error}</p>}
+              {job.error && <p className="mt-2.5 text-[12px] font-medium text-destructive">{job.error}</p>}
               {job.status === 'completed' && (
-                <p className="mt-2 text-[11px] text-muted-foreground">
+                <p className="mt-2.5 text-[11px] leading-relaxed text-muted-foreground">
                   Файл отправлен ботом в чат и продублирован ссылкой. Временные файлы удалены.
                 </p>
               )}

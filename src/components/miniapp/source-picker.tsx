@@ -1,14 +1,41 @@
 'use client';
 
-// Общая зона загрузки: файл ИЛИ ссылка (YouTube / прямая) — как в ТЗ бота
+// Общая зона загрузки: файл ИЛИ ссылка (YouTube / прямая) — как в ТЗ бота.
+// Стиль: iOS Segmented Control + стеклянная drop-зона.
 
 import { useRef, useState } from 'react';
 import { FileVideo, Link2, UploadCloud, X } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Segmented } from '@/components/ui/segmented';
 
 export type SourceMode = 'upload' | 'youtube' | 'link';
+
+const MODE_OPTIONS: { value: SourceMode; label: React.ReactNode }[] = [
+  {
+    value: 'upload',
+    label: (
+      <>
+        <UploadCloud className="h-3.5 w-3.5" /> Файл
+      </>
+    ),
+  },
+  {
+    value: 'youtube',
+    label: (
+      <>
+        <Link2 className="h-3.5 w-3.5" /> YouTube
+      </>
+    ),
+  },
+  {
+    value: 'link',
+    label: (
+      <>
+        <Link2 className="h-3.5 w-3.5" /> Ссылка
+      </>
+    ),
+  },
+];
 
 export function SourcePicker({
   mode,
@@ -30,19 +57,12 @@ export function SourcePicker({
 
   return (
     <div className="space-y-3">
-      <Tabs value={mode} onValueChange={(v) => onModeChange(v as SourceMode)}>
-        <TabsList className="grid grid-cols-3 w-full">
-          <TabsTrigger value="upload" className="gap-1.5 text-xs">
-            <UploadCloud className="h-3.5 w-3.5" /> Файл
-          </TabsTrigger>
-          <TabsTrigger value="youtube" className="gap-1.5 text-xs">
-            <Link2 className="h-3.5 w-3.5" /> YouTube
-          </TabsTrigger>
-          <TabsTrigger value="link" className="gap-1.5 text-xs">
-            <Link2 className="h-3.5 w-3.5" /> Ссылка
-          </TabsTrigger>
-        </TabsList>
-      </Tabs>
+      <Segmented
+        value={mode}
+        onValueChange={onModeChange}
+        options={MODE_OPTIONS}
+        ariaLabel="Источник видео"
+      />
 
       {mode === 'upload' ? (
         !file ? (
@@ -60,26 +80,39 @@ export function SourcePicker({
               const f = e.dataTransfer.files?.[0];
               if (f) onFileChange(f);
             }}
-            className={`w-full rounded-xl border-2 border-dashed px-4 py-8 flex flex-col items-center gap-2 transition-colors min-h-[120px] ${
-              dragOver ? 'border-primary bg-primary/10' : 'border-input hover:border-primary/60 hover:bg-muted/50'
+            className={`tap-none flex w-full min-h-[124px] flex-col items-center gap-2 rounded-2xl border border-dashed px-4 py-7 transition-all duration-200 ${
+              dragOver
+                ? 'scale-[1.01] border-primary bg-primary/10 shadow-glow'
+                : 'border-hairline bg-black/[0.025] hover:border-primary/50 hover:bg-primary/[0.05] dark:bg-white/[0.04]'
             }`}
           >
-            <FileVideo className="h-8 w-8 text-primary" />
-            <span className="text-sm font-medium">Нажмите или перетащите видео</span>
-            <span className="text-xs text-muted-foreground">MP4, MKV, MOV · до 2 ГБ · аудио тоже подойдёт</span>
+            <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/12 dark:bg-primary/20">
+              <FileVideo className="h-5.5 w-5.5 text-primary" />
+            </span>
+            <span className="text-[13px] font-semibold">Нажмите или перетащите видео</span>
+            <span className="text-[11px] text-muted-foreground">
+              MP4, MKV, MOV · до 2 ГБ · аудио тоже подойдёт
+            </span>
           </button>
         ) : (
-          <div className="flex items-center gap-3 rounded-xl border border-border bg-muted/40 px-3 py-2.5">
-            <div className="h-10 w-10 rounded-lg bg-primary/15 flex items-center justify-center shrink-0">
+          <div className="flex items-center gap-3 rounded-2xl border border-hairline bg-black/[0.025] px-3.5 py-3 dark:bg-white/[0.04]">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary/12 dark:bg-primary/20">
               <FileVideo className="h-5 w-5 text-primary" />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium truncate">{file.name}</p>
-              <p className="text-xs text-muted-foreground">{(file.size / 1048576).toFixed(1)} МБ</p>
+              <p className="truncate text-[13px] font-semibold">{file.name}</p>
+              <p className="text-[11px] text-muted-foreground">
+                {(file.size / 1048576).toFixed(1)} МБ
+              </p>
             </div>
-            <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" aria-label="Убрать файл" onClick={() => onFileChange(null)}>
+            <button
+              type="button"
+              aria-label="Убрать файл"
+              onClick={() => onFileChange(null)}
+              className="tap-none flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-black/[0.05] text-muted-foreground transition-colors hover:bg-destructive/12 hover:text-destructive dark:bg-white/[0.10] dark:hover:bg-destructive/25"
+            >
               <X className="h-4 w-4" />
-            </Button>
+            </button>
           </div>
         )
       ) : (

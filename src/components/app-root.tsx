@@ -1,12 +1,13 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ChefHat, ShieldCheck, LogOut, Film } from 'lucide-react';
+import { ChefHat, Film, Info, LogOut, ShieldCheck } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { api } from '@/lib/client-api';
 import { getTg, tgInitData, hapticTap } from '@/lib/telegram-client';
 import type { Job, ShowcaseItem, User } from '@/lib/types';
 import { MiniApp } from '@/components/miniapp/mini-app';
+import { DynamicIsland } from '@/components/miniapp/dynamic-island';
 import { AdminPanel } from '@/components/admin/admin-panel';
 import { Button } from '@/components/ui/button';
 
@@ -106,12 +107,21 @@ export function AppRoot() {
     toast({ title: 'Сессия сброшена', description: 'Вход выполнен заново' });
   };
 
+  const hasActiveJobs = jobs.some((j) => j.status === 'queued' || j.status === 'processing');
+
   if (!authDone) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="flex flex-col items-center gap-4 text-muted-foreground">
-          <ChefHat className="h-10 w-10 animate-pulse text-primary" />
-          <p className="text-sm">Подключаемся к кухне монтажа…</p>
+      <div className="relative min-h-screen overflow-hidden bg-background">
+        <div className="absolute inset-x-0 top-0 h-96 overflow-hidden" aria-hidden>
+          <div className="aurora" />
+        </div>
+        <div className="relative flex min-h-screen items-center justify-center">
+          <div className="flex flex-col items-center gap-5">
+            <div className="flex h-[76px] w-[76px] animate-pulse items-center justify-center rounded-[24px] bg-gradient-to-b from-[#3a9bff] to-[#0063e0] shadow-glow dark:from-[#0a84ff] dark:to-[#0058c8] dark:shadow-glow-dark">
+              <ChefHat className="h-9 w-9 text-white" />
+            </div>
+            <p className="text-sm font-medium text-muted-foreground">Подключаемся к кухне монтажа…</p>
+          </div>
         </div>
       </div>
     );
@@ -119,16 +129,25 @@ export function AppRoot() {
 
   if (!user) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background p-6">
-        <div className="max-w-sm w-full text-center space-y-4">
-          <div className="mx-auto h-16 w-16 rounded-2xl bg-primary/15 flex items-center justify-center">
-            <Film className="h-8 w-8 text-primary" />
+      <div className="relative min-h-screen overflow-hidden bg-background">
+        <div className="absolute inset-x-0 top-0 h-96 overflow-hidden" aria-hidden>
+          <div className="aurora" />
+        </div>
+        <div className="relative flex min-h-screen items-center justify-center p-6">
+          <div className="w-full max-w-sm space-y-5 rounded-3xl border border-hairline bg-card p-7 text-center shadow-soft">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-[20px] bg-gradient-to-b from-[#3a9bff] to-[#0063e0] shadow-glow dark:from-[#0a84ff] dark:to-[#0058c8] dark:shadow-glow-dark">
+              <Film className="h-8 w-8 text-white" />
+            </div>
+            <div className="space-y-1.5">
+              <h1 className="text-xl font-bold tracking-tight">Монтажная Кухня</h1>
+              <p className="text-[13px] leading-relaxed text-muted-foreground">
+                Не удалось войти автоматически. Откройте приложение через Telegram-бота или повторите демо-вход.
+              </p>
+            </div>
+            <Button size="lg" className="w-full" onClick={authenticate}>
+              Войти
+            </Button>
           </div>
-          <h1 className="text-xl font-bold">Монтажная Кухня</h1>
-          <p className="text-sm text-muted-foreground">
-            Не удалось войти автоматически. Откройте приложение через Telegram-бота или повторите демо-вход.
-          </p>
-          <Button onClick={authenticate} className="w-full">Войти</Button>
         </div>
       </div>
     );
@@ -148,52 +167,68 @@ export function AppRoot() {
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
-      {demoMode && (
-        <div className="bg-amber-500/15 text-amber-600 dark:text-amber-400 text-center text-xs py-1.5 px-3 border-b border-amber-500/20">
-          Демо-режим песочницы — откройте приложение через бота в Telegram для полного цикла
-        </div>
-      )}
       <div className="flex justify-center">
-        <div className="w-full max-w-md min-h-screen flex flex-col relative shadow-2xl sm:border-x border-border">
-          {/* Шапка */}
-          <header className="sticky top-0 z-30 bg-card/85 backdrop-blur-md border-b border-border">
-            <div className="flex items-center gap-3 px-4 py-3">
-              <div className="h-10 w-10 rounded-xl bg-primary/15 flex items-center justify-center shrink-0">
-                <ChefHat className="h-5.5 w-5.5 text-primary" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <h1 className="font-bold leading-tight truncate">Монтажная Кухня</h1>
-                <p className="text-[11px] text-muted-foreground truncate">
-                  Движок Sereban-glitch-video-montage v2.0.0
-                </p>
-              </div>
-              {user.role === 'admin' && (
+        <div className="relative w-full max-w-md min-h-screen flex flex-col shadow-float sm:border-x hairline">
+          {/* Aurora-свечение в верхней части колонки */}
+          <div className="absolute inset-x-0 top-0 h-96 overflow-hidden pointer-events-none" aria-hidden>
+            <div className="aurora" />
+          </div>
+
+          {demoMode && (
+            <div className="relative px-4 pt-3">
+              <p className="flex items-center justify-center gap-1.5 rounded-full border border-warning/25 bg-warning/12 px-3.5 py-1.5 text-center text-[11.5px] font-medium text-warning">
+                <Info className="h-3.5 w-3.5 shrink-0" />
+                Демо-режим — войдите через бота в Telegram
+              </p>
+            </div>
+          )}
+
+          {/* Шапка iOS: стеклянная, липкая, с Dynamic Island */}
+          <header className="sticky top-0 z-40">
+            <div className="glass-strong border-b hairline">
+              {hasActiveJobs && (
+                <div className="px-3 pt-3">
+                  <DynamicIsland jobs={jobs} onOpen={() => switchTab('tasks')} />
+                </div>
+              )}
+              <div className="flex items-center gap-3 px-4 py-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[13px] bg-gradient-to-b from-[#3a9bff] to-[#0063e0] shadow-glow dark:from-[#0a84ff] dark:to-[#0058c8] dark:shadow-glow-dark">
+                  <ChefHat className="h-5 w-5 text-white" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h1 className="truncate text-[17px] font-bold leading-tight tracking-tight">Монтажная Кухня</h1>
+                  <p className="truncate text-[11px] text-muted-foreground">
+                    Sereban-glitch-video-montage v2.0.0
+                  </p>
+                </div>
+                {user.role === 'admin' && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label="Админ-панель"
+                    className="h-9 w-9 shrink-0 rounded-full bg-black/[0.04] text-muted-foreground hover:bg-black/[0.08] hover:text-primary dark:bg-white/[0.08] dark:hover:bg-white/[0.14]"
+                    onClick={() => {
+                      hapticTap();
+                      setView('admin');
+                    }}
+                  >
+                    <ShieldCheck className="h-5 w-5" />
+                  </Button>
+                )}
                 <Button
                   variant="ghost"
                   size="icon"
-                  aria-label="Админ-панель"
-                  className="h-9 w-9 shrink-0 text-muted-foreground hover:text-primary"
-                  onClick={() => {
-                    hapticTap();
-                    setView('admin');
-                  }}
+                  aria-label="Сбросить сессию"
+                  className="h-9 w-9 shrink-0 rounded-full bg-black/[0.04] text-muted-foreground hover:bg-black/[0.08] hover:text-destructive dark:bg-white/[0.08] dark:hover:bg-white/[0.14]"
+                  onClick={logout}
                 >
-                  <ShieldCheck className="h-5 w-5" />
+                  <LogOut className="h-4.5 w-4.5" />
                 </Button>
-              )}
-              <Button
-                variant="ghost"
-                size="icon"
-                aria-label="Сбросить сессию"
-                className="h-9 w-9 shrink-0 text-muted-foreground hover:text-destructive"
-                onClick={logout}
-              >
-                <LogOut className="h-4.5 w-4.5" />
-              </Button>
+              </div>
             </div>
           </header>
 
-          <main className="flex-1 pb-28">
+          <main className="relative flex-1 pb-32">
             <MiniApp
               user={user}
               tab={tab}
