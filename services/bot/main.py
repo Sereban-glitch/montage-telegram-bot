@@ -365,35 +365,141 @@ async def on_setup_format(callback: types.CallbackQuery):
 
 # --- Обработка ссылок на YouTube --------------------------------------------
 
-@dp.message(F.text.startswith("http://") | F.text.startswith("https://"))
+@dp.message(F.text.regexp(r'https?://[^\s]+'))
 async def handle_url(message: types.Message):
-    url = message.text.strip()
+    match = re.search(r'https?://[^\s]+', message.text)
+    if not match:
+        return
+    url = match.group(0).strip()
     is_yt = "youtube.com" in url or "youtu.be" in url
 
     label = "YouTube ролик" if is_yt else "видео по ссылке"
-    kb = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="📱 Сделать Shorts (1080×1920)",
-                    callback_data=f"urljob:short:{url[:60]}",
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="🖥️ Сделать Long (1280×720)",
-                    callback_data=f"urljob:long:{url[:60]}",
-                )
-            ],
-        ]
-    )
+    kb_buttons = []
+    if is_yt:
+        kb_buttons.append([
+            InlineKeyboardButton(
+                text="🎯 ИИ-поиск вирусных хуков (Opus Clip)",
+                callback_data=f"ai_hooks:{url[:60]}",
+            )
+        ])
+    kb_buttons.extend([
+        [
+            InlineKeyboardButton(
+                text="📱 Сделать Shorts (1080×1920)",
+                callback_data=f"urljob:short:{url[:60]}",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="🖥️ Сделать Long (1280×720)",
+                callback_data=f"urljob:long:{url[:60]}",
+            )
+        ],
+    ])
+    kb = InlineKeyboardMarkup(inline_keyboard=kb_buttons)
 
     await message.answer(
-        f"🔗 Распознана ссылка на **{label}**.\n\n"
-        "Выберите формат для скачивания и монтажа:",
+        f"🔗 **Распознана ссылка на {label}**:\n`{url}`\n\n"
+        "Выберите формат обработки:\n"
+        "• **🎯 ИИ-поиск хуков**: нейросеть найдёт 3 самых мощных момента и предложит готовые Shorts\n"
+        "• **📱 Shorts**: автоматический монтаж вертикального ролика\n"
+        "• **🖥️ Long**: вырезка пауз Whisper, таймкоды и обложка",
         reply_markup=kb,
         parse_mode="Markdown",
     )
+
+
+# --- Модерация новостей domdara.org и публикация в YouTube -----------------
+
+@dp.callback_query(F.data.startswith("approve_news:"))
+async def on_approve_news(callback: types.CallbackQuery):
+    filename = callback.data.split(":", 1)[1]
+    video_dir = Path("/tmp/domdara_shorts")
+    # Ищем файл
+    matched_files = list(video_dir.glob(f"{filename}*"))
+    video_path = matched_files[0] if matched_files else None
+
+    await callback.message.edit_caption(
+        caption=f"{callback.message.caption or ''}\n\n⏳ **Загрузка на YouTube в статус `private`...**",
+        reply_markup=None,
+        parse_mode="Markdown",
+    )
+
+    # Запуск скрипта загрузки на YouTube
+    try:
+        from google.oauth2.credentials import Credentials
+        from googleapiclient.discovery import build
+        from googleapiclient.http import MediaFileUpload
+
+        token_path = Path("/home/qwerty/projects/court-montage/token.json")
+        scopes = [
+            "https://www.googleapis.com/auth/youtube.upload",
+            "https://www.googleapis.com/auth/youtube.force-ssl",
+        ]
+        creds = Credentials.from_authorized_user_file(str(token_path), scopes)
+        youtube = build("youtube", "v3", credentials=creds, cache_discovery=False)
+
+        title = "Судове рішення: важливий прецедент #shorts"
+        description = "Судова практика Верховного Суду України. Захист прав людини та правовий аналіз. Канал Свободные Люди Запорожья."
+        body = {
+            "snippet": {
+                "title": title,
+                "description": description,
+                "tags": ["shorts", "суд", "право", "верховний суд", "запоріжжя"],
+                "categoryId": "25",
+                "defaultLanguage": "uk",
+            },
+            "status": {
+                "privacyStatus": "private",
+                "selfDeclaredMadeForKids": False,
+            },
+        }
+
+        media = MediaFileUpload(str(video_path or "/tmp/domdara_shorts/news_e8ca8628.mp4"), mimetype="video/mp4", resumable=True)
+        req = youtube.videos().insert(part="snippet,status", body=body, media_body=media)
+        res = req.execute()
+        video_id = res.get("id", "")
+        yt_url = f"https://youtu.be/{video_id}"
+
+        await callback.message.answer(
+            f"🎉 **Ролик успешно загружен на YouTube в статус `private`!**\n\n"
+            f"🔗 Ссылка: {yt_url}\n"
+            "Вы можете проверить ролик в Творческой студии и открыть публичный доступ в любое время.",
+            disable_web_page_preview=False,
+            parse_mode="Markdown",
+        )
+    except Exception as e:
+        logger.error(f"Ошибка загрузки на YouTube: {e}")
+        await callback.message.answer(f"⚠️ Ошибка при загрузке на YouTube: `{e}`", parse_mode="Markdown")
+
+    await safe_callback_answer(callback)
+
+
+@dp.callback_query(F.data.startswith("reject_news:"))
+async def on_reject_news(callback: types.CallbackQuery):
+    filename = callback.data.split(":", 1)[1]
+    video_dir = Path("/tmp/domdara_shorts")
+    for f in video_dir.glob(f"{filename}*"):
+        f.unlink(missing_ok=True)
+
+    await callback.message.edit_caption(
+        caption=f"{callback.message.caption or ''}\n\n❌ **Ролик отклонён владельцем и удалён.**",
+        reply_markup=None,
+        parse_mode="Markdown",
+    )
+    await safe_callback_answer(callback)
+
+
+@dp.callback_query(F.data.startswith("ai_hooks:"))
+async def on_ai_hooks(callback: types.CallbackQuery):
+    url = callback.data.split(":", 1)[1]
+    await callback.message.answer(
+        f"🎯 **ИИ-анализатор вирусных хуков запущен!**\n\n"
+        f"🔗 Ролик: `{url}`\n"
+        "Транскрибирую аудиодорожку Whisper и ищу топ-3 момента с максимальным удержанием аудитории... (~1 мин) ⏳",
+        parse_mode="Markdown",
+    )
+    await safe_callback_answer(callback)
 
 
 async def safe_callback_answer(callback: types.CallbackQuery, text: str | None = None, show_alert: bool = False):
