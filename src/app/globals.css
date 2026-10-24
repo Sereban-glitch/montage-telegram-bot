@@ -1,0 +1,155 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+/* ── Тема «Telegram Light» ─────────────────────────────── */
+:root {
+  --radius: 0.75rem;
+  --background: #eef3f7;
+  --foreground: #17212b;
+  --card: #ffffff;
+  --card-foreground: #17212b;
+  --popover: #ffffff;
+  --popover-foreground: #17212b;
+  --primary: #2481cc;
+  --primary-foreground: #ffffff;
+  --secondary: #e6edf4;
+  --secondary-foreground: #17212b;
+  --muted: #e9eef3;
+  --muted-foreground: #6d7f8d;
+  --accent: #dfeafa;
+  --accent-foreground: #1c5a92;
+  --destructive: #e0353d;
+  --border: #dde4eb;
+  --input: #cfd9e2;
+  --ring: #2481cc;
+  --chart-1: #2481cc;
+  --chart-2: #31b545;
+  --chart-3: #f5a623;
+  --chart-4: #e0353d;
+  --chart-5: #8e44ad;
+  --sidebar: #ffffff;
+  --sidebar-foreground: #17212b;
+  --sidebar-primary: #2481cc;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #e6edf4;
+  --sidebar-accent-foreground: #17212b;
+  --sidebar-border: #dde4eb;
+  --sidebar-ring: #2481cc;
+}
+
+/* ── Тема «Telegram Dark» (ночной режим мессенджера) ───── */
+.dark {
+  --background: #0e1621;
+  --foreground: #f2f6f9;
+  --card: #17212b;
+  --card-foreground: #f2f6f9;
+  --popover: #1c2733;
+  --popover-foreground: #f2f6f9;
+  --primary: #3390ec;
+  --primary-foreground: #ffffff;
+  --secondary: #232e3c;
+  --secondary-foreground: #e8eef3;
+  --muted: #1d2835;
+  --muted-foreground: #8da3b6;
+  --accent: #22303e;
+  --accent-foreground: #7ab5f2;
+  --destructive: #ec3942;
+  --border: #243242;
+  --input: #2b3a4d;
+  --ring: #3390ec;
+  --chart-1: #3390ec;
+  --chart-2: #45c05a;
+  --chart-3: #f5a623;
+  --chart-4: #ec3942;
+  --chart-5: #a86ee0;
+  --sidebar: #17212b;
+  --sidebar-foreground: #f2f6f9;
+  --sidebar-primary: #3390ec;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #232e3c;
+  --sidebar-accent-foreground: #f2f6f9;
+  --sidebar-border: #243242;
+  --sidebar-ring: #3390ec;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-geist-sans), -apple-system, "SF Pro Text", Roboto,
+      "Helvetica Neue", system-ui, sans-serif;
+  }
+}
+
+/* Тонкий скроллбар для логов и списков */
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.scrollbar-thin::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 999px;
+}
+
+/* Аккуратный градиент-скрим для обложек витрины */
+.thumb-scrim {
+  background: linear-gradient(
+    to top,
+    rgb(0 0 0 / 0.82) 0%,
+    rgb(0 0 0 / 0.35) 38%,
+    rgb(0 0 0 / 0) 62%
+  );
+}
+
+/* Безопасные отступы под «шторку» Telegram на iOS */
+.pb-safe {
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+}

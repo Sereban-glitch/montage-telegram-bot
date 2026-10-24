@@ -1,0 +1,104 @@
+// ============================================================
+// Монтажная Кухня — schema (SQLite в песочнице / Postgres в проде)
+// Зеркально повторяется в services/backend/app/models.py
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Пользователь Telegram (владелец канала / друзья / клиенты)
+model User {
+  id             String       @id @default(cuid())
+  telegramId     String       @unique
+  username       String?
+  firstName      String?
+  photoUrl       String?
+  role           String       @default("user") // user | admin
+  isBlocked      Boolean      @default(false)
+  dailyUsed      Int          @default(0)
+  dailyLimit     Int          @default(3)      // бесплатно 3 задачи в день
+  usageResetAt   DateTime     @default(now())
+  createdAt      DateTime     @default(now())
+  jobs           Job[]
+  channels       Channel[]
+}
+
+// Задача рендера (FIFO очередь воркера)
+model Job {
+  id            String    @id @default(cuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id])
+  type          String    // short | long
+  status        String    @default("queued") // queued | processing | completed | failed | cancelled
+  stageKey      String?   // download | audio | transcribe | cut | render | cover | upload | done
+  stageLabel    String?
+  progress      Int       @default(0)
+  queuePosition Int       @default(0)
+  sourceType    String    // upload | youtube | link
+  sourceName    String?
+  sourceUrl     String?
+  filePath      String?
+  sizeMb        Float?
+  durationSec   Int?
+  params        String    @default("{}") // JSON: титулы, языки, max_gap и т.д.
+  resultUrl     String?
+  thumbUrl      String?
+  error         String?
+  ramMb         Int?
+  notified      Boolean   @default(false) // бот отправил уведомление?
+  createdAt     DateTime  @default(now())
+  startedAt     DateTime?
+  completedAt   DateTime?
+  events        Event[]
+}
+
+// Поток событий воркера (для терминала в админке и статусов)
+model Event {
+  id        String   @id @default(cuid())
+  jobId     String?
+  job       Job?     @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  level     String   @default("info") // info | warn | error
+  message   String
+  createdAt DateTime @default(now())
+}
+
+// Витрина готовых работ
+model ShowcaseItem {
+  id          String   @id @default(cuid())
+  kind        String   // short | long
+  title       String
+  subtitle    String?
+  thumbUrl    String
+  videoUrl    String?
+  durationSec Int?
+  views       Int      @default(0)
+  featured    Boolean  @default(false)
+  sort        Int      @default(0)
+  createdAt   DateTime @default(now())
+}
+
+// Подключённые YouTube-каналы (OAuth профили)
+model Channel {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id])
+  provider     String   @default("youtube")
+  channelId    String?
+  channelTitle String?
+  handle       String?
+  profileKey   String?  // profiles/<key>.json в движке
+  status       String   @default("pending") // pending | connected | error
+  createdAt    DateTime @default(now())
+}
+
+// KV-настройки системы
+model Setting {
+  key   String @id
+  value String
+}
