@@ -8,6 +8,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ArrowLeft,
   Ban,
+  BookOpenText,
   CheckCircle2,
   Cpu,
   Gauge,
@@ -31,16 +32,21 @@ import { Segmented } from '@/components/ui/segmented';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { DomdaraHub } from '@/components/admin/domdara-hub';
+import { YoutubeSection } from '@/components/admin/youtube-section';
 
 type LogEvent = JobEvent;
-type AdminTab = 'queue' | 'users' | 'channels' | 'settings' | 'showcase';
+// Admin Mode разделён по полочкам: контент (Domdara) / очередь / YouTube / система.
+// Функции для друзей живут в Client Mode (Mini App) и сюда не вмешиваются.
+type AdminTab = 'domdara' | 'queue' | 'youtube' | 'users' | 'showcase' | 'settings';
 
 const ADMIN_TABS: { value: AdminTab; label: string }[] = [
-  { value: 'queue', label: 'Очередь' },
+  { value: 'domdara', label: '🏛️ Domdara' },
+  { value: 'queue', label: '🛡️ Очередь' },
+  { value: 'youtube', label: '📢 YouTube' },
   { value: 'users', label: 'Юзеры' },
-  { value: 'channels', label: 'Каналы' },
-  { value: 'settings', label: 'Настройки' },
   { value: 'showcase', label: 'Витрина' },
+  { value: 'settings', label: 'Настройки' },
 ];
 
 export function AdminPanel({ user, onBack }: { user: User; onBack: () => void }) {
@@ -49,7 +55,7 @@ export function AdminPanel({ user, onBack }: { user: User; onBack: () => void })
   const [users, setUsers] = useState<(User & { _count: { jobs: number } })[]>([]);
   const [showcase, setShowcase] = useState<ShowcaseItem[]>([]);
   const [settings, setSettings] = useState<Record<string, string>>({});
-  const [adminTab, setAdminTab] = useState<AdminTab>('queue');
+  const [adminTab, setAdminTab] = useState<AdminTab>('domdara');
   const logRef = useRef<HTMLDivElement>(null);
 
   const loadOverview = useCallback(async () => {
@@ -210,16 +216,44 @@ export function AdminPanel({ user, onBack }: { user: User; onBack: () => void })
           />
         </div>
 
-        {/* ── Очередь + журнал ─────────────────────────────── */}
+        {/* ── Приоритетная очередь (Zero-Conflict) + журнал ── */}
         {adminTab === 'queue' && (
           <div className="animate-fade-up space-y-4">
+            {/* Два потока очереди — визуальное разделение Zero-Conflict */}
+            <div className="grid gap-3.5 sm:grid-cols-2">
+              <div className="rounded-3xl border border-primary/30 bg-primary/[0.06] p-4 shadow-soft dark:bg-primary/[0.12]">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/15 text-[12px] font-extrabold text-primary">10</span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[13.5px] font-bold">Поток 1 · Друзья и пользователи</p>
+                    <p className="text-[11px] text-muted-foreground">интерактивные задачи — берутся первыми, без задержек</p>
+                  </div>
+                  <span className="text-[20px] font-extrabold tabular-nums text-primary">
+                    {overview.jobs.filter((j) => j.priority >= 10).length}
+                  </span>
+                </div>
+              </div>
+              <div className="rounded-3xl border border-[#af52de]/30 bg-[#af52de]/[0.06] p-4 shadow-soft dark:bg-[#bf5af2]/[0.12]">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#af52de]/15 text-[12px] font-extrabold text-[#af52de]">1</span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[13.5px] font-bold">Поток 2 · Новости Domdara</p>
+                    <p className="text-[11px] text-muted-foreground">фоновая генерация — только когда поток 1 пуст</p>
+                  </div>
+                  <span className="text-[20px] font-extrabold tabular-nums text-[#af52de]">
+                    {overview.jobs.filter((j) => j.priority < 10).length}
+                  </span>
+                </div>
+              </div>
+            </div>
+
             <Card className="gap-0 py-4">
               <CardHeader className="px-4 pb-3">
                 <CardTitle className="flex items-center gap-2 text-[14px]">
                   <Gauge className="h-4 w-4 text-primary" />
-                  FIFO-очередь рендера
+                  Очередь рендера (Zero-Conflict)
                   <span className="text-[11px] font-normal text-muted-foreground">
-                    одновременных рендеров: 1 (защита 12 ГБ ОЗУ)
+                    слот рендера: 1 · ОЗУ ≤ 8 ГБ · claim ORDER BY priority DESC, created_at ASC
                   </span>
                 </CardTitle>
               </CardHeader>
@@ -251,15 +285,31 @@ export function AdminPanel({ user, onBack }: { user: User; onBack: () => void })
                             {job.status === 'processing' ? '▶' : job.queuePosition}
                           </TableCell>
                           <TableCell>
-                            <span
-                              className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wide ${
-                                job.type === 'long'
-                                  ? 'bg-[#af52de]/12 text-[#af52de] dark:bg-[#bf5af2]/22'
-                                  : 'bg-primary/12 text-primary dark:bg-primary/22'
-                              }`}
-                            >
-                              {job.type.toUpperCase()}
-                            </span>
+                            <div className="flex items-center gap-1.5">
+                              <span
+                                className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wide ${
+                                  job.type === 'long'
+                                    ? 'bg-[#af52de]/12 text-[#af52de] dark:bg-[#bf5af2]/22'
+                                    : job.type === 'hook_analysis' || job.type === 'hook_render'
+                                      ? 'bg-[#ff9f0a]/14 text-[#ff9f0a] dark:bg-[#ff9f0a]/22'
+                                      : job.type === 'news_shorts'
+                                        ? 'bg-[#30d158]/14 text-[#30d158] dark:bg-[#30d158]/22'
+                                        : 'bg-primary/12 text-primary dark:bg-primary/22'
+                                }`}
+                              >
+                                {{ short: 'SHORT', long: 'LONG', hook_analysis: 'HOOK·AI', hook_render: 'HOOK·MP4', news_shorts: 'NEWS' }[job.type] ?? job.type.toUpperCase()}
+                              </span>
+                              <span
+                                className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[9.5px] font-extrabold tabular-nums ${
+                                  job.priority >= 10
+                                    ? 'bg-primary/12 text-primary dark:bg-primary/22'
+                                    : 'bg-[#af52de]/12 text-[#af52de] dark:bg-[#bf5af2]/22'
+                                }`}
+                                title={job.priority >= 10 ? 'Интерактивный приоритет — всегда первым' : 'Фоновый приоритет — после задач друзей'}
+                              >
+                                P{job.priority}
+                              </span>
+                            </div>
                           </TableCell>
                           <TableCell className="max-w-[180px] truncate text-xs">{job.sourceName ?? job.sourceUrl ?? '—'}</TableCell>
                           <TableCell className="hidden text-xs text-muted-foreground md:table-cell">
@@ -359,57 +409,63 @@ export function AdminPanel({ user, onBack }: { user: User; onBack: () => void })
           </Card>
         )}
 
-        {/* ── Каналы ───────────────────────────────────────── */}
-        {adminTab === 'channels' && (
-          <div className="animate-fade-up grid gap-3.5 sm:grid-cols-2">
-            {overview.channels.map((ch) => (
-              <Card key={ch.id} className="gap-0 py-4">
-                <CardContent className="flex items-start gap-3.5 px-4">
-                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#ff3b30]/10 dark:bg-[#ff453a]/20">
-                    <Youtube className="h-5 w-5 text-[#ff3b30] dark:text-[#ff453a]" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-[14px] font-semibold">{ch.channelTitle ?? '—'}</p>
-                    <p className="truncate text-[11.5px] text-muted-foreground">
-                      {ch.handle} · {ch.channelId}
-                    </p>
-                    <p className="mt-0.5 text-[11px] text-muted-foreground">
-                      профиль движка: profiles/{ch.profileKey}.json
-                    </p>
-                  </div>
-                  <div className="flex shrink-0 flex-col items-end gap-2">
-                    {ch.status === 'connected' ? (
-                      <Badge className="gap-1 bg-success/15 text-success dark:bg-success/22">
-                        <CheckCircle2 className="h-3 w-3" /> подключен
-                      </Badge>
-                    ) : ch.status === 'error' ? (
-                      <Badge variant="destructive" className="text-[10px]">ошибка OAuth</Badge>
-                    ) : (
-                      <Badge variant="secondary" className="text-[10px]">ожидание</Badge>
-                    )}
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-7 text-[11.5px]"
-                      onClick={async () => {
-                        await api('/api/admin/channels', {
-                          method: 'PATCH',
-                          body: JSON.stringify({ id: ch.id, status: ch.status === 'connected' ? 'pending' : 'connected' }),
-                        });
-                        loadOverview();
-                      }}
-                    >
-                      {ch.status === 'connected' ? 'Отключить' : 'Подключить'}
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-            {overview.channels.length === 0 && (
-              <p className="text-[13px] text-muted-foreground">
-                Каналы ещё не подключены. OAuth-токены хранятся на сервере, см. DEPLOYMENT.md.
-              </p>
-            )}
+        {/* ── Domdara News Hub (правовой контент + модерация) ── */}
+        {adminTab === 'domdara' && <DomdaraHub />}
+
+        {/* ── YouTube канал (@humanrightszp) + подключённые профили ── */}
+        {adminTab === 'youtube' && (
+          <div className="space-y-4">
+            <YoutubeSection />
+            <div className="animate-fade-up grid gap-3.5 sm:grid-cols-2">
+              {overview.channels.map((ch) => (
+                <Card key={ch.id} className="gap-0 py-4">
+                  <CardContent className="flex items-start gap-3.5 px-4">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#ff3b30]/10 dark:bg-[#ff453a]/20">
+                      <Youtube className="h-5 w-5 text-[#ff3b30] dark:text-[#ff453a]" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[14px] font-semibold">{ch.channelTitle ?? '—'}</p>
+                      <p className="truncate text-[11.5px] text-muted-foreground">
+                        {ch.handle} · {ch.channelId}
+                      </p>
+                      <p className="mt-0.5 text-[11px] text-muted-foreground">
+                        профиль движка: profiles/{ch.profileKey}.json
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 flex-col items-end gap-2">
+                      {ch.status === 'connected' ? (
+                        <Badge className="gap-1 bg-success/15 text-success dark:bg-success/22">
+                          <CheckCircle2 className="h-3 w-3" /> подключен
+                        </Badge>
+                      ) : ch.status === 'error' ? (
+                        <Badge variant="destructive" className="text-[10px]">ошибка OAuth</Badge>
+                      ) : (
+                        <Badge variant="secondary" className="text-[10px]">ожидание</Badge>
+                      )}
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-[11.5px]"
+                        onClick={async () => {
+                          await api('/api/admin/channels', {
+                            method: 'PATCH',
+                            body: JSON.stringify({ id: ch.id, status: ch.status === 'connected' ? 'pending' : 'connected' }),
+                          });
+                          loadOverview();
+                        }}
+                      >
+                        {ch.status === 'connected' ? 'Отключить' : 'Подключить'}
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+              {overview.channels.length === 0 && (
+                <p className="text-[13px] text-muted-foreground">
+                  Каналы ещё не подключены. OAuth-токены хранятся на сервере, см. DEPLOYMENT.md.
+                </p>
+              )}
+            </div>
           </div>
         )}
 

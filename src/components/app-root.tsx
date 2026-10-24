@@ -1,10 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ChefHat, Film, Info, LogOut, ShieldCheck } from 'lucide-react';
+import { ChefHat, Film, Gauge, LogOut, ShieldCheck } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { api } from '@/lib/client-api';
-import { getTg, tgInitData, hapticTap } from '@/lib/telegram-client';
+import { getTg, tgInitData, hapticTap, TG_DESKTOP_PLATFORMS } from '@/lib/telegram-client';
 import type { Job, ShowcaseItem, User } from '@/lib/types';
 import { MiniApp } from '@/components/miniapp/mini-app';
 import { DynamicIsland } from '@/components/miniapp/dynamic-island';
@@ -12,14 +12,14 @@ import { AdminPanel } from '@/components/admin/admin-panel';
 import { Button } from '@/components/ui/button';
 
 type View = 'mini' | 'admin';
-export type Tab = 'shorts' | 'long' | 'showcase' | 'tasks';
+export type Tab = 'hooks' | 'shorts' | 'long' | 'showcase' | 'tasks';
 
 export function AppRoot() {
   const [user, setUser] = useState<User | null>(null);
   const [authDone, setAuthDone] = useState(false);
-  const [demoMode, setDemoMode] = useState(true);
   const [view, setView] = useState<View>('mini');
-  const [tab, setTab] = useState<Tab>('shorts');
+  // Client Mode открывается на главной фиче для блогеров — ИИ-хуки (Opus Clip style)
+  const [tab, setTab] = useState<Tab>('hooks');
   const [jobs, setJobs] = useState<Job[]>([]);
   const [showcase, setShowcase] = useState<ShowcaseItem[]>([]);
   const bannerRef = useRef(false);
@@ -33,12 +33,10 @@ export function AppRoot() {
         body: JSON.stringify({ initData: initData ?? undefined }),
       });
       setUser(u);
-      setDemoMode(!initData);
     } catch {
       try {
         const { user: u } = await api<{ user: User }>('/api/auth');
         setUser(u);
-        setDemoMode(true);
       } catch {
         setUser(null);
       }
@@ -51,12 +49,17 @@ export function AppRoot() {
     const tg = getTg();
     tg?.ready();
     tg?.expand();
-    try {
-      tg?.requestFullscreen?.();
-    } catch {
-      /* ignore */
-    }
     tg?.disableVerticalSwipes?.();
+    // Desktop-режим (Telegram Desktop / macos / web-клиенты): просим полноэкранный режим,
+    // если платформа его поддерживает. Мобильные клиенты остаются с обычным expand().
+    const platform = tg?.platform ?? '';
+    if (TG_DESKTOP_PLATFORMS.includes(platform)) {
+      try {
+        tg?.requestFullscreen?.();
+      } catch {
+        /* метод недоступен на этой платформе — молча продолжаем */
+      }
+    }
     authenticate();
   }, [authenticate]);
 
@@ -114,6 +117,10 @@ export function AppRoot() {
 
   const hasActiveJobs = jobs.some((j) => j.status === 'queued' || j.status === 'processing');
 
+  // Боевой статус владельца: «Сергей (владелец) • Pro 2026»
+  const ownerName = (user?.firstName ?? 'Сергей').replace(/\s*\([^)]*\)/g, '').trim() || 'Сергей';
+  const statusLine = `${ownerName}${user?.role === 'admin' ? ' (владелец)' : ''} • Pro 2026`;
+
   if (!authDone) {
     return (
       <div className="relative min-h-screen overflow-hidden bg-background">
@@ -146,7 +153,7 @@ export function AppRoot() {
             <div className="space-y-1.5">
               <h1 className="text-xl font-bold tracking-tight">Монтажная Кухня</h1>
               <p className="text-[13px] leading-relaxed text-muted-foreground">
-                Не удалось войти автоматически. Откройте приложение через Telegram-бота или повторите демо-вход.
+                Не удалось войти автоматически. Откройте приложение через бота в Telegram и повторите попытку.
               </p>
             </div>
             <Button size="lg" className="w-full" onClick={authenticate}>
@@ -172,14 +179,14 @@ export function AppRoot() {
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
-      <div className="flex justify-center w-full">
-        <div className="relative w-full max-w-md md:max-w-6xl min-h-screen flex flex-col shadow-float sm:border-x hairline transition-all">
+      <div className="flex justify-center">
+        <div className="relative w-full max-w-md min-h-screen flex flex-col shadow-float sm:border-x hairline md:max-w-6xl">
           {/* Aurora-свечение в верхней части колонки */}
           <div className="absolute inset-x-0 top-0 h-96 overflow-hidden pointer-events-none" aria-hidden>
             <div className="aurora" />
           </div>
 
-          {/* Шапка iOS: стеклянная, липкая, с Dynamic Island и десктоп-навигацией */}
+          {/* Шапка iOS: стеклянная, липкая, с Dynamic Island */}
           <header className="sticky top-0 z-40">
             <div className="glass-strong border-b hairline">
               {hasActiveJobs && (
@@ -192,53 +199,20 @@ export function AppRoot() {
                   <ChefHat className="h-5 w-5 text-white" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <h1 className="truncate text-[17px] font-bold leading-tight tracking-tight">Монтажная Кухня</h1>
-                    <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full text-[10.5px] font-semibold bg-primary/12 text-primary border border-primary/20">
-                      Сергей (владелец) • Pro 2026
-                    </span>
-                  </div>
+                  <h1 className="truncate text-[17px] font-bold leading-tight tracking-tight">Монтажная Кухня</h1>
                   <p className="truncate text-[11px] text-muted-foreground">
-                    Sereban-glitch-video-montage v2.0.0
+                    {/* На узких экранах — короткий статус, на десктопе — полный */}
+                    <span className="md:hidden">{ownerName}{user.role === 'admin' ? ' • Pro' : ''} 2026</span>
+                    <span className="hidden md:inline">{statusLine}</span>
                   </p>
                 </div>
-
-                {/* Навигация для десктопа */}
-                <div className="hidden md:flex items-center gap-1 bg-black/[0.04] dark:bg-white/[0.06] p-1 rounded-full border hairline">
-                  <button
-                    onClick={() => switchTab('shorts')}
-                    className={`px-3 py-1 text-xs font-semibold rounded-full transition-all ${
-                      tab === 'shorts' ? 'bg-primary text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    Shorts (9:16)
-                  </button>
-                  <button
-                    onClick={() => switchTab('long')}
-                    className={`px-3 py-1 text-xs font-semibold rounded-full transition-all ${
-                      tab === 'long' ? 'bg-primary text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    Long (16:9)
-                  </button>
-                  <button
-                    onClick={() => switchTab('showcase')}
-                    className={`px-3 py-1 text-xs font-semibold rounded-full transition-all ${
-                      tab === 'showcase' ? 'bg-primary text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    Витрина
-                  </button>
-                  <button
-                    onClick={() => switchTab('tasks')}
-                    className={`px-3 py-1 text-xs font-semibold rounded-full transition-all ${
-                      tab === 'tasks' ? 'bg-primary text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    Задачи ({jobs.length})
-                  </button>
-                </div>
-
+                <span
+                  className="flex h-9 shrink-0 items-center gap-1.5 rounded-full bg-primary/10 px-3 text-[12px] font-semibold tabular-nums text-primary dark:bg-primary/20"
+                  title={`Суточный баланс: использовано ${user.dailyUsed} из ${user.dailyLimit} задач`}
+                >
+                  <Gauge className="h-3.5 w-3.5" />
+                  {user.dailyUsed}/{user.dailyLimit}
+                </span>
                 {user.role === 'admin' && (
                   <Button
                     variant="ghost"
@@ -266,7 +240,7 @@ export function AppRoot() {
             </div>
           </header>
 
-          <main className="relative flex-1 pb-32">
+          <main className="relative flex-1 pb-32 md:pb-12">
             <MiniApp
               user={user}
               tab={tab}

@@ -15,13 +15,14 @@ export type TgWebApp = {
   initDataUnsafe: { user?: { id: number; first_name?: string; username?: string; photo_url?: string } };
   colorScheme: 'light' | 'dark';
   themeParams: TgThemeParams;
+  /** Платформа клиента: ios | android | tdesktop | macos | web | webk | unigram | unknown */
   platform?: string;
-  isExpanded?: boolean;
   ready: () => void;
   expand: () => void;
   close: () => void;
-  requestFullscreen?: () => void;
   disableVerticalSwipes?: () => void;
+  requestFullscreen?: () => void;
+  exitFullscreen?: () => void;
   setHeaderColor?: (color: string) => void;
   setBackgroundColor?: (color: string) => void;
   HapticFeedback?: {
@@ -29,6 +30,13 @@ export type TgWebApp = {
     notificationOccurred: (type: 'error' | 'success' | 'warning') => void;
   };
 };
+
+// Платформы десктопного Telegram — триггерят desktop-раскладку и полноэкранный режим.
+export const TG_DESKTOP_PLATFORMS: readonly string[] = ['tdesktop', 'macos', 'web', 'webk'];
+
+export function tgPlatform(): string {
+  return getTg()?.platform ?? '';
+}
 
 declare global {
   interface Window {
@@ -38,13 +46,7 @@ declare global {
 
 export function getTg(): TgWebApp | null {
   if (typeof window === 'undefined') return null;
-  return window.Telegram?.WebApp ? (window.Telegram.WebApp as TgWebApp) : null;
-}
-
-export function isTgDesktop(): boolean {
-  const tg = getTg();
-  const platform = (tg?.platform || '').toLowerCase();
-  return ['tdesktop', 'macos', 'web', 'webk', 'weba'].includes(platform) || (typeof window !== 'undefined' && window.innerWidth >= 768);
+  return window.Telegram?.WebApp?.initData !== undefined ? (window.Telegram.WebApp as TgWebApp) : null;
 }
 
 export function tgInitData(): string | null {

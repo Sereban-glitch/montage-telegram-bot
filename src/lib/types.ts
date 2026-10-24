@@ -1,9 +1,11 @@
 // Типы, зеркалящие контракт API (Next.js демо-контур и FastAPI в проде)
 
 export type Role = 'user' | 'admin';
-export type JobType = 'short' | 'long';
+export type JobType = 'short' | 'long' | 'hook_analysis' | 'hook_render' | 'news_shorts';
 export type JobStatus = 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled';
 export type SourceType = 'upload' | 'youtube' | 'link';
+// Human-in-the-Loop для news_shorts (Фича №2)
+export type ApprovalStatus = 'pending' | 'approved' | 'regenerate' | 'regenerated' | 'rejected' | 'rejected_done' | 'uploaded' | 'upload_failed';
 
 export interface User {
   id: string;
@@ -31,6 +33,8 @@ export interface Job {
   userId: string;
   type: JobType;
   status: JobStatus;
+  priority: number; // 10 = интерактив (друзья, всегда первыми), 1 = фон (domdara)
+  approvalStatus: ApprovalStatus | null; // модерация news_shorts
   stageKey: string | null;
   stageLabel: string | null;
   progress: number;
@@ -50,6 +54,26 @@ export interface Job {
   completedAt: string | null;
   user?: { firstName: string | null; username: string | null; telegramId: string };
   events?: JobEvent[];
+}
+
+// Кандидат AI Hook Finder (Фича №1) — живёт в params.completed hook_analysis-задачи
+export interface HookCandidate {
+  rank: number;
+  start: number;
+  end: number;
+  duration: number;
+  title: string;
+  quote: string;
+  score: number; // Virality Score 60..99
+  raw?: number;
+  breakdown?: { hook: number; completeness: number; emotion: number; retention: number };
+}
+
+// YouTube-пакет к готовому ролику (в params.youtube_meta)
+export interface YoutubeMeta {
+  title: string;
+  description: string;
+  tags: string[];
 }
 
 export interface ShowcaseItem {
@@ -137,3 +161,37 @@ export const DEFAULT_LONG: LongParams = {
   chapters: true,
   meta_title: '',
 };
+
+// ── Фича №2: Domdara News Hub (админ-раздел) ─────────────────
+export type NewsState = 'new' | 'queued' | 'rendered' | 'approved' | 'rejected' | 'regenerate' | 'failed' | 'skipped';
+
+export interface NewsArticle {
+  id: string;
+  guid: string;
+  url: string;
+  title: string;
+  snippet: string;
+  state: NewsState;
+  jobId: string | null;
+  publishedAt: string | null;
+  createdAt: string;
+  job?: Job | null; // связанная задача (прогресс/результат/сценарий)
+}
+
+// Раздел «📢 YouTube Канал» в админке
+export interface YoutubeUpload {
+  jobId: string;
+  title: string;
+  description: string;
+  tags: string[];
+  videoId: string | null;
+  privacy: 'private' | 'public' | 'unlisted';
+  uploadedAt: string | null;
+  kind: JobType;
+}
+
+export interface YoutubeSectionData {
+  channel: { handle: string; title: string };
+  oauth: { status: 'connected' | 'expired' | 'missing'; expiresAt: string | null; scope: string };
+  uploads: YoutubeUpload[];
+}

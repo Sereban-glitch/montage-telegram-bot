@@ -132,9 +132,63 @@ export async function ensureSeed() {
     global_daily_limit: '3',
     max_file_mb: '2048',
     worker_ram_budget_mb: '8192',
+    // Фича №2: Domdara News Hub
+    domdara_enabled: 'true',
+    domdara_feed_url: 'http://domdara.org/feed/',
+    news_daily_max: '2',
+    // Фича №2: YouTube-раздел (OAuth для выгрузки news-Shorts)
+    youtube_oauth_status: 'connected',
+    youtube_oauth_expires_at: new Date(Date.now() + 45 * 24 * 3600 * 1000).toISOString(),
+    youtube_oauth_scope: 'https://www.googleapis.com/auth/youtube.upload',
+    youtube_channel_handle: '@humanrightszp',
+    youtube_channel_title: 'Свободные Люди Запорожья',
   };
   for (const [key, value] of Object.entries(defaults)) {
     await db.setting.upsert({ where: { key }, update: {}, create: { key, value } });
+  }
+
+  // --- Статьи domdara.org (демо-данные News Hub) ---------------------
+  const newsCount = await db.newsArticle.count();
+  if (newsCount === 0) {
+    await db.newsArticle.createMany({
+      data: [
+        {
+          guid: 'http://domdara.org/?p=2031',
+          url: 'http://domdara.org/verkhovnyi-sud-subsydiia',
+          title: 'Верховный Суд: субсидию нельзя снять без документальной проверки',
+          snippet:
+            'Суд рассмотрел дело пенсионерки, у которой управлении соцзащиты сняло субсидию без выезда на место. Кассационный суд подтвердил: отмена субсидии возможна только после документальной проверки. Решение защитило миллионы украинцев от произвола чиновников.',
+          state: 'new',
+          publishedAt: new Date(Date.now() - 3 * 3600 * 1000),
+        },
+        {
+          guid: 'http://domdara.org/?p=2028',
+          url: 'http://domdara.org/borg-bez-rozpysky',
+          title: 'Как вернуть долг без расписки: прецедент недели',
+          snippet:
+            'Позивач передав 150 тисяч гривень готівкою без розписки, але за наявності свідків і листування у месенджері. Верховний Суд підтвердив: договір позики можуть підтвердити свідки. Грошове зобов’язання дійсне і без паперу.',
+          state: 'new',
+          publishedAt: new Date(Date.now() - 9 * 3600 * 1000),
+        },
+        {
+          guid: 'http://domdara.org/?p=2019',
+          url: 'http://domdara.org/peni-voennyi-stan',
+          title: 'Пени за коммуналку в военное положение: суд стал на сторону людей',
+          snippet:
+            'Управляюча компанія нарахувала пеню за період воєнного стану. Верховний Суд підтвердив: нараховувати пені під час війни заборонено законом. Прецедент захистить мільйони українців від незаконних нарахувань.',
+          state: 'new',
+          publishedAt: new Date(Date.now() - 26 * 3600 * 1000),
+        },
+        {
+          guid: 'http://domdara.org/?p=2005',
+          url: 'http://domdara.org/photo-konferentsiia',
+          title: 'Фотоотчёт с юридической конференции',
+          snippet: '',
+          state: 'skipped',
+          publishedAt: new Date(Date.now() - 30 * 3600 * 1000),
+        },
+      ],
+    });
   }
 
   // --- Системный лог ------------------------------------------------

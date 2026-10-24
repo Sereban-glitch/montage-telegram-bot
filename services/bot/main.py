@@ -8,6 +8,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import sys
 import uuid
 from datetime import datetime
@@ -162,11 +163,14 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
 
     buttons.extend([
         [
-            InlineKeyboardButton(text="📊 Мои задачи и статус", callback_data="my_tasks"),
-            InlineKeyboardButton(text="🌟 Витрина готовых работ", callback_data="showcase"),
+            InlineKeyboardButton(text="💡 Пояснялка для новичков (куда жать?)", callback_data="explain_guide"),
         ],
         [
-            InlineKeyboardButton(text="ℹ️ Помощь и форматы", callback_data="help_info"),
+            InlineKeyboardButton(text="🌟 Примеры работ (До / После)", callback_data="showcase"),
+            InlineKeyboardButton(text="📊 Мои задачи и статус", callback_data="my_tasks"),
+        ],
+        [
+            InlineKeyboardButton(text="ℹ️ Помощь и лимиты", callback_data="help_info"),
         ],
     ])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
@@ -180,17 +184,17 @@ async def cmd_start(message: types.Message):
         user = await get_or_create_user(db, message.from_user)
 
     text = (
-        f"👋 Привет, {message.from_user.first_name}!\n\n"
-        "Добро пожаловать в **Монтажную Кухню** — автоматизированный сервис "
-        "монтажа Shorts и длинных видео на базе движка `video-montage` v2.0.0.\n\n"
-        "✨ **Что умеет сервис:**\n"
-        "• **Shorts 1080×1920**: автонарезка динамики, автосубтитры DejaVu Sans на подложке, "
-        "двуязычный режим (укр речь + рус субтитры), генерация вертикальной обложки.\n"
-        "• **Long 1280×720**: транскрипция Whisper, аудит и вырезка неловких пауз, "
-        "главы и обложка.\n"
-        "• **YouTube публикация**: загрузка на канал в статус `private`.\n\n"
-        f"🎯 Ваш лимит на сегодня: **{user['dailyUsed']}/{user['dailyLimit']} задач**.\n\n"
-        "Вы можете прислать видео или ссылку прямо в этот чат или открыть удобное Mini App:"
+        f"👋 **Привет, {message.from_user.first_name}!**\n\n"
+        "Добро пожаловать в **Монтажную Кухню** — твою персональную карманную студию "
+        "вирусного видеомонтажа на базе искусственного интеллекта! 🚀\n\n"
+        "Больше не нужно часами сидеть в видеоредакторах или нанимать дорогих монтажёров. "
+        "Сервис сам превращает длинные видео, стримы и судебные заседания в сочные YouTube Shorts за 60 секунд.\n\n"
+        "⚡ **Как это работает за 3 простых шага:**\n"
+        "1️⃣ **Скинь ссылку на YouTube** прямо в этот чат (или отправь видеофайл).\n"
+        "2️⃣ **ИИ сам отслушает запись** и покажет 3 самых вирусных момента с процентом удержания зрителей (98%, 92%).\n"
+        "3️⃣ **Нажми «Смонтировать»** — и забери готовый вертикальный ролик с субтитрами, чистым ТВ-звуком и кликбейтной обложкой!\n\n"
+        f"🎯 Ваш суточный баланс: **{user['dailyUsed']}/{user['dailyLimit']} задач**.\n\n"
+        "👇 Нажмите кнопку ниже или просто отправьте ссылку в чат:"
     )
     await message.answer(text, reply_markup=main_menu_keyboard(), parse_mode="Markdown")
 
@@ -507,6 +511,28 @@ async def safe_callback_answer(callback: types.CallbackQuery, text: str | None =
         await callback.answer(text=text, show_alert=show_alert)
     except Exception:
         pass
+
+@dp.callback_query(F.data == "explain_guide")
+async def on_explain_guide(callback: types.CallbackQuery):
+    text = (
+        "💡 **Пояснялка для новичков: как выжимать максимум из Монтажной Кухни**\n\n"
+        "Мы создали сервис так, чтобы даже человек без опыта монтажа получал видео уровня топовых YouTube-каналов. Вот что значит каждая функция:\n\n"
+        "🎯 **1. «ИИ-хуки (Opus Clip)» — главная магия для авторов:**\n"
+        "Вам не нужно отслушивать 2 часа своего стрима или интервью. Нейросеть сама найдёт 3 самых эмоциональных и вирусных фрагмента (35–55 сек), покажет рейтинг вирусности (98%, 92%) и смонтирует их в 1 клик!\n\n"
+        "🇺🇦➡️🇷🇺 **2. «Двуязычный режим» — секрет миллионных просмотров:**\n"
+        "Спикер говорит на украинском языке, а субтитры автоматически выводятся на русском крупным шрифтом на подложке. По статистике YouTube Shorts, это расширяет аудиторию ролика в 3–4 раза!\n\n"
+        "🔊 **3. «ТВ-звук EBU R128» — чистый голос без хрипов:**\n"
+        "Стандарт профессионального телевещания. Ваш голос звучит плотно, сочно и разборчиво даже если зритель слушает ролик в метро или на шумной улице.\n\n"
+        "🖼️ **4. «Кликбейтный стоп-кадр»:**\n"
+        "Интерактивный ползунок позволяет выбрать именно ту секунду, где на лице спикера застыла самая яркая эмоция (спор, удивление, гнев) для обложки с золотой рамкой.\n\n"
+        "🏛️ **5. «Новости Domdara» (для правозащитников):**\n"
+        "Бот сам находит прецеденты Верховного Суда, делает из них 45-секундный видеосюжет со слайдами и диктором и присылает вам на одобрение перед выгрузкой в YouTube!\n\n"
+        "👉 **С чего начать прямо сейчас?**\n"
+        "Просто отправьте любую ссылку на YouTube-видео в этот чат или нажмите кнопку «🎬 Открыть Монтажную Кухню»!"
+    )
+    await callback.message.answer(text, parse_mode="Markdown")
+    await safe_callback_answer(callback)
+
 
 @dp.callback_query(F.data == "my_tasks")
 async def on_my_tasks(callback: types.CallbackQuery):
