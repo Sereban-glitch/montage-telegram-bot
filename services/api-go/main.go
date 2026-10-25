@@ -163,13 +163,18 @@ func initDB(dbPath string) error {
 		VALUES ('u_admin', '8519049699', 'admin', 'Сергей', 'admin', 0, 999, ?)
 	`, now)
 
-	// Дефолтная витрина (Shorts по суду и КСУ)
+	// Дефолтная витрина (Реальные смонтированные работы по суду, КСУ и Domdara)
 	_, _ = db.Exec(`
 		INSERT OR IGNORE INTO ShowcaseItem (id, title, subtitle, kind, thumbUrl, videoUrl, duration, featured, views, orderNum)
 		VALUES 
-		('sc_ksu', 'КСУ: Карантинные ограничения прав незаконны', 'Сергей Величко / Решение КСУ', 'short', '/showcase/sc_ksu.png', 'https://youtu.be/OU03THwqGeM', '01:38', 1, 1420, 1),
-		('sc_makulatura', 'Судья отказалась принимать макулатуру прокурора!', 'Суд по ст. 114-1 УК', 'short', '/showcase/sc_makulatura.png', 'https://youtu.be/C7Njgtw6G4o', '00:49', 1, 980, 2),
-		('sc_dates', 'Акт вручили ДО того, как утвердили?! Ляп прокуратуры', 'Суд по ст. 114-1 УК', 'short', '/showcase/sc_dates.png', 'https://youtu.be/iRDPExtgyXQ', '00:48', 1, 850, 3)
+		('sc_ksu', 'КСУ: Карантинні обмеження прав незаконні', 'Сергій Велічко · Рішення КСУ від 29.09.2026', 'short', '/showcase/ksu.jpg', 'https://youtu.be/OU03THwqGeM', '01:38', 1, 15900, 1),
+		('sc_makulatura', 'Суддя відмовилась приймати макулатуру прокурора!', 'Суд за ст. 114-1 КК України · Запоріжжя', 'short', '/showcase/makulatura.jpg', '/demo/makulatura.mp4', '00:49', 1, 12400, 2),
+		('sc_dates', 'Акт вручили ДО того, як затвердили?! Ляп прокуратури', 'Порушення ст. 290 КПК · Відкриття матеріалів', 'short', '/showcase/dates.jpg', '/demo/dates.mp4', '00:48', 1, 9800, 3),
+		('sc_raport', 'Відео до рапорту?! Адвокат розніс прокуратуру по ст. 104 КПК', 'Правовий розбір судового засідання', 'short', '/showcase/raport.jpg', '/demo/raport.mp4', '00:54', 0, 8700, 4),
+		('sc_ekspertyzy', 'Експертизи після закриття слідства?! Прокурор виправдовується!', 'Порушення строків досудового розслідування', 'short', '/showcase/ekspertyzy.jpg', '/demo/ekspertyzy.mp4', '00:46', 0, 11200, 5),
+		('sc_velychko_court', 'Сергій Велічко в суді: Строки слідства закінчилися!', 'Виступ у суді за ст. 114-1 КК України', 'short', '/showcase/velychko_court.jpg', '/demo/velychko_court.mp4', '00:49', 1, 16800, 6),
+		('sc_domdara', 'Суд ухвалив: без даних у реєстрі представник НЕ ДІЙСНИЙ!', 'Прецедент Верховного Суду України · domdara.org', 'short', '/showcase/domdara_news.jpg', '/demo/domdara_court.mp4', '00:42', 0, 7600, 7),
+		('sc_long_court', 'Повне засідання суду за ст. 114-1: клопотання та строки', 'Повний запис судового засідання 16:9 із главами та таймкодами', 'long', '/showcase/court_long.jpg', 'https://youtu.be/OU03THwqGeM', '18:24', 1, 22700, 8)
 	`)
 
 	return nil
