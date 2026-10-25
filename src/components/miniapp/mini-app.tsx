@@ -78,13 +78,13 @@ export function MiniApp({
       <div
         key={tab}
         className={`animate-fade-up px-4 pt-4 md:px-6 md:pt-5 ${
-          tab === 'shorts' || tab === 'hooks' ? '' : 'md:mx-auto md:max-w-2xl'
+          tab === 'shorts' || tab === 'hooks' || tab === 'showcase' ? '' : 'md:mx-auto md:max-w-2xl'
         }`}
       >
         {tab === 'hooks' && <HooksTab user={user} jobs={jobs} />}
         {tab === 'shorts' && <ShortsTab user={user} onCreated={onJobCreated} />}
         {tab === 'long' && <LongTab user={user} onCreated={onJobCreated} />}
-        {tab === 'showcase' && <ShowcaseTab items={showcase} reload={reloadShowcase} />}
+        {tab === 'showcase' && <ShowcaseTab items={showcase} reload={reloadShowcase} onNavigate={onTabChange} />}
         {tab === 'tasks' && <TasksTab jobs={jobs} />}
       </div>
 
