@@ -5,37 +5,11 @@
 
 import { useRef, useState } from 'react';
 import { FileVideo, Link2, UploadCloud, X } from 'lucide-react';
+import { useI18n } from '@/lib/i18n';
 import { Input } from '@/components/ui/input';
 import { Segmented } from '@/components/ui/segmented';
 
 export type SourceMode = 'upload' | 'youtube' | 'link';
-
-const MODE_OPTIONS: { value: SourceMode; label: React.ReactNode }[] = [
-  {
-    value: 'upload',
-    label: (
-      <>
-        <UploadCloud className="h-3.5 w-3.5" /> Файл
-      </>
-    ),
-  },
-  {
-    value: 'youtube',
-    label: (
-      <>
-        <Link2 className="h-3.5 w-3.5" /> YouTube
-      </>
-    ),
-  },
-  {
-    value: 'link',
-    label: (
-      <>
-        <Link2 className="h-3.5 w-3.5" /> Ссылка
-      </>
-    ),
-  },
-];
 
 export function SourcePicker({
   mode,
@@ -52,8 +26,36 @@ export function SourcePicker({
   url: string;
   onUrlChange: (u: string) => void;
 }) {
+  const { t } = useI18n();
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
+
+  const MODE_OPTIONS: { value: SourceMode; label: React.ReactNode }[] = [
+    {
+      value: 'upload',
+      label: (
+        <>
+          <UploadCloud className="h-3.5 w-3.5" /> {t.source.file}
+        </>
+      ),
+    },
+    {
+      value: 'youtube',
+      label: (
+        <>
+          <Link2 className="h-3.5 w-3.5" /> YouTube
+        </>
+      ),
+    },
+    {
+      value: 'link',
+      label: (
+        <>
+          <Link2 className="h-3.5 w-3.5" /> {t.source.link}
+        </>
+      ),
+    },
+  ];
 
   return (
     <div className="space-y-3">
@@ -61,7 +63,7 @@ export function SourcePicker({
         value={mode}
         onValueChange={onModeChange}
         options={MODE_OPTIONS}
-        ariaLabel="Источник видео"
+        ariaLabel={t.source.aria}
       />
 
       {mode === 'upload' ? (
@@ -89,10 +91,8 @@ export function SourcePicker({
             <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/12 dark:bg-primary/20">
               <FileVideo className="h-5.5 w-5.5 text-primary" />
             </span>
-            <span className="text-[13px] font-semibold">Нажмите или перетащите видео</span>
-            <span className="text-[11px] text-muted-foreground">
-              MP4, MKV, MOV · до 2 ГБ · аудио тоже подойдёт
-            </span>
+            <span className="text-[13px] font-semibold">{t.source.dropTitle}</span>
+            <span className="text-[11px] text-muted-foreground">{t.source.dropHint}</span>
           </button>
         ) : (
           <div className="flex items-center gap-3 rounded-2xl border border-hairline bg-black/[0.025] px-3.5 py-3 dark:bg-white/[0.04]">
@@ -107,7 +107,7 @@ export function SourcePicker({
             </div>
             <button
               type="button"
-              aria-label="Убрать файл"
+              aria-label={t.source.removeFile}
               onClick={() => onFileChange(null)}
               className="tap-none flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-black/[0.05] text-muted-foreground transition-colors hover:bg-destructive/12 hover:text-destructive dark:bg-white/[0.10] dark:hover:bg-destructive/25"
             >
@@ -119,9 +119,9 @@ export function SourcePicker({
         <Input
           value={url}
           onChange={(e) => onUrlChange(e.target.value)}
-          placeholder={mode === 'youtube' ? 'https://youtube.com/watch?v=…' : 'https://example.com/video.mp4'}
+          placeholder={mode === 'youtube' ? 'https://youtube.com/watch?v=…' : t.source.urlPlaceholder}
           inputMode="url"
-          aria-label="Ссылка на видео"
+          aria-label={t.source.urlAria}
         />
       )}
 

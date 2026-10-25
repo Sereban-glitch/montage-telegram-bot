@@ -1,10 +1,18 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ChefHat, Film, Gauge, LogOut, ShieldCheck } from 'lucide-react';
+import { ChefHat, Film, Gauge, LogOut, Maximize, Minimize, ShieldCheck } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { api } from '@/lib/client-api';
-import { getTg, tgInitData, hapticTap, TG_DESKTOP_PLATFORMS } from '@/lib/telegram-client';
+import {
+  getTg,
+  hapticTap,
+  onFullscreenChange,
+  requestAutoFullscreen,
+  tgInitData,
+  toggleFullscreen,
+} from '@/lib/telegram-client';
+import { LANGS, LanguageProvider, useI18n, type Lang } from '@/lib/i18n';
 import type { Job, ShowcaseItem, User } from '@/lib/types';
 import { MiniApp } from '@/components/miniapp/mini-app';
 import { DynamicIsland } from '@/components/miniapp/dynamic-island';
@@ -14,7 +22,45 @@ import { Button } from '@/components/ui/button';
 type View = 'mini' | 'admin';
 export type Tab = 'hooks' | 'shorts' | 'long' | 'showcase' | 'tasks';
 
-export function AppRoot() {
+/** Компактный переключатель языка 🌐 RU | UA — мгновенно, без перезагрузки. */
+function LangSwitcher() {
+  const { lang, setLang } = useI18n();
+  const pick = (l: Lang) => {
+    if (l !== lang) {
+      hapticTap();
+      setLang(l);
+    }
+  };
+  return (
+    <div
+      className="flex h-9 shrink-0 items-center gap-0.5 rounded-full bg-black/[0.04] p-0.5 dark:bg-white/[0.08]"
+      role="group"
+      aria-label="Мова інтерфейсу / Язык интерфейса"
+    >
+      <span aria-hidden className="hidden pl-1.5 pr-0.5 text-[11px] leading-none text-muted-foreground sm:inline">
+        🌐
+      </span>
+      {LANGS.map((l) => (
+        <button
+          key={l}
+          type="button"
+          onClick={() => pick(l)}
+          aria-pressed={lang === l}
+          className={`h-8 rounded-full px-2 text-[10.5px] font-bold uppercase tracking-wide transition-all duration-200 active:scale-90 sm:px-2.5 sm:text-[11px] ${
+            lang === l
+              ? 'bg-white text-primary shadow-sm dark:bg-white/15'
+              : 'text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          {l}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function AppRootInner() {
+  const { t } = useI18n();
   const [user, setUser] = useState<User | null>(null);
   const [authDone, setAuthDone] = useState(false);
   const [view, setView] = useState<View>('mini');
@@ -22,6 +68,7 @@ export function AppRoot() {
   const [tab, setTab] = useState<Tab>('hooks');
   const [jobs, setJobs] = useState<Job[]>([]);
   const [showcase, setShowcase] = useState<ShowcaseItem[]>([]);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const bannerRef = useRef(false);
 
   // ── Авторизация: Telegram initData либо демо-вход ──────────
@@ -45,23 +92,28 @@ export function AppRoot() {
     }
   }, []);
 
+  // ── Старт WebApp: expand + авто-fullscreen на всех платформах ──
   useEffect(() => {
     const tg = getTg();
     tg?.ready();
     tg?.expand();
     tg?.disableVerticalSwipes?.();
-    // Desktop-режим (Telegram Desktop / macos / web-клиенты): просим полноэкранный режим,
-    // если платформа его поддерживает. Мобильные клиенты остаются с обычным expand().
-    const platform = tg?.platform ?? '';
-    if (TG_DESKTOP_PLATFORMS.includes(platform)) {
-      try {
-        tg?.requestFullscreen?.();
-      } catch {
-        /* метод недоступен на этой платформе — молча продолжаем */
-      }
-    }
+    // Полноэкранный режим (Bot API 8.0+): мобильные и Telegram Desktop.
+    // Вне Telegram метода нет — requestAutoFullscreen просто ничего не делает.
+    requestAutoFullscreen();
     authenticate();
   }, [authenticate]);
+
+  // ── Синхронизация состояния fullscreen (Telegram-события + браузерный API) ──
+  useEffect(() => {
+    setIsFullscreen(Boolean(getTg()?.isFullscreen));
+    return onFullscreenChange(setIsFullscreen);
+  }, []);
+
+  const handleToggleFullscreen = () => {
+    hapticTap();
+    void toggleFullscreen();
+  };
 
   // ── Витрина (грузится один раз) ────────────────────────────
   const loadShowcase = useCallback(async () => {
@@ -94,16 +146,16 @@ export function AppRoot() {
       }
     };
     poll();
-    const t = setInterval(poll, 2000);
+    const timer = setInterval(poll, 2000);
     return () => {
       alive = false;
-      clearInterval(t);
+      clearInterval(timer);
     };
   }, [user]);
 
-  const switchTab = (t: Tab) => {
+  const switchTab = (tabNext: Tab) => {
     hapticTap();
-    setTab(t);
+    setTab(tabNext);
   };
 
   const logout = async () => {
@@ -112,14 +164,14 @@ export function AppRoot() {
     setAuthDone(false);
     bannerRef.current = false;
     await authenticate();
-    toast({ title: 'Сессия сброшена', description: 'Вход выполнен заново' });
+    toast({ title: t.header.sessionResetTitle, description: t.header.sessionResetDesc });
   };
 
   const hasActiveJobs = jobs.some((j) => j.status === 'queued' || j.status === 'processing');
 
   // Боевой статус владельца: «Сергей (владелец) • Pro 2026»
   const ownerName = (user?.firstName ?? 'Сергей').replace(/\s*\([^)]*\)/g, '').trim() || 'Сергей';
-  const statusLine = `${ownerName}${user?.role === 'admin' ? ' (владелец)' : ''} • Pro 2026`;
+  const statusLine = `${ownerName}${user?.role === 'admin' ? ` ${t.header.ownerRole}` : ''} • ${t.header.statusSuffix}`;
 
   if (!authDone) {
     return (
@@ -132,7 +184,7 @@ export function AppRoot() {
             <div className="flex h-[76px] w-[76px] animate-pulse items-center justify-center rounded-[24px] bg-gradient-to-b from-[#3a9bff] to-[#0063e0] shadow-glow dark:from-[#0a84ff] dark:to-[#0058c8] dark:shadow-glow-dark">
               <ChefHat className="h-9 w-9 text-white" />
             </div>
-            <p className="text-sm font-medium text-muted-foreground">Подключаемся к кухне монтажа…</p>
+            <p className="text-sm font-medium text-muted-foreground">{t.header.connecting}</p>
           </div>
         </div>
       </div>
@@ -151,13 +203,11 @@ export function AppRoot() {
               <Film className="h-8 w-8 text-white" />
             </div>
             <div className="space-y-1.5">
-              <h1 className="text-xl font-bold tracking-tight">Монтажная Кухня</h1>
-              <p className="text-[13px] leading-relaxed text-muted-foreground">
-                Не удалось войти автоматически. Откройте приложение через бота в Telegram и повторите попытку.
-              </p>
+              <h1 className="text-xl font-bold tracking-tight">{t.brand}</h1>
+              <p className="text-[13px] leading-relaxed text-muted-foreground">{t.header.loginDesc}</p>
             </div>
             <Button size="lg" className="w-full" onClick={authenticate}>
-              Войти
+              {t.header.loginBtn}
             </Button>
           </div>
         </div>
@@ -194,30 +244,46 @@ export function AppRoot() {
                   <DynamicIsland jobs={jobs} onOpen={() => switchTab('tasks')} />
                 </div>
               )}
-              <div className="flex items-center gap-3 px-4 py-3">
+              <div className="flex items-center gap-1.5 px-3 py-3 sm:gap-3 sm:px-4">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[13px] bg-gradient-to-b from-[#3a9bff] to-[#0063e0] shadow-glow dark:from-[#0a84ff] dark:to-[#0058c8] dark:shadow-glow-dark">
                   <ChefHat className="h-5 w-5 text-white" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <h1 className="truncate text-[17px] font-bold leading-tight tracking-tight">Монтажная Кухня</h1>
+                  <h1 className="truncate text-[15px] font-bold leading-tight tracking-tight sm:text-[17px]">
+                    {t.brand}
+                  </h1>
                   <p className="truncate text-[11px] text-muted-foreground">
                     {/* На узких экранах — короткий статус, на десктопе — полный */}
-                    <span className="md:hidden">{ownerName}{user.role === 'admin' ? ' • Pro' : ''} 2026</span>
+                    <span className="md:hidden">
+                      {ownerName} • {t.header.statusSuffix}
+                    </span>
                     <span className="hidden md:inline">{statusLine}</span>
                   </p>
                 </div>
                 <span
-                  className="flex h-9 shrink-0 items-center gap-1.5 rounded-full bg-primary/10 px-3 text-[12px] font-semibold tabular-nums text-primary dark:bg-primary/20"
-                  title={`Суточный баланс: использовано ${user.dailyUsed} из ${user.dailyLimit} задач`}
+                  className="flex h-9 shrink-0 items-center gap-1.5 rounded-full bg-primary/10 px-2.5 text-[12px] font-semibold tabular-nums text-primary sm:px-3 dark:bg-primary/20"
+                  title={t.header.balanceTitle(user.dailyUsed, user.dailyLimit)}
                 >
                   <Gauge className="h-3.5 w-3.5" />
                   {user.dailyUsed}/{user.dailyLimit}
                 </span>
+                {/* Переключатель режима окна: ⛶ развернуть / ❐ свернуть */}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label={isFullscreen ? t.header.exitFs : t.header.expand}
+                  title={isFullscreen ? t.header.exitFs : t.header.expand}
+                  className="h-9 w-9 shrink-0 rounded-full bg-black/[0.04] text-muted-foreground hover:bg-primary/10 hover:text-primary dark:bg-white/[0.08] dark:hover:bg-white/[0.14]"
+                  onClick={handleToggleFullscreen}
+                >
+                  {isFullscreen ? <Minimize className="h-4.5 w-4.5" /> : <Maximize className="h-4.5 w-4.5" />}
+                </Button>
+                <LangSwitcher />
                 {user.role === 'admin' && (
                   <Button
                     variant="ghost"
                     size="icon"
-                    aria-label="Админ-панель"
+                    aria-label={t.header.admin}
                     className="h-9 w-9 shrink-0 rounded-full bg-black/[0.04] text-muted-foreground hover:bg-black/[0.08] hover:text-primary dark:bg-white/[0.08] dark:hover:bg-white/[0.14]"
                     onClick={() => {
                       hapticTap();
@@ -230,8 +296,8 @@ export function AppRoot() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  aria-label="Сбросить сессию"
-                  className="h-9 w-9 shrink-0 rounded-full bg-black/[0.04] text-muted-foreground hover:bg-black/[0.08] hover:text-destructive dark:bg-white/[0.08] dark:hover:bg-white/[0.14]"
+                  aria-label={t.header.logout}
+                  className="hidden h-9 w-9 shrink-0 rounded-full bg-black/[0.04] text-muted-foreground hover:bg-black/[0.08] hover:text-destructive sm:inline-flex dark:bg-white/[0.08] dark:hover:bg-white/[0.14]"
                   onClick={logout}
                 >
                   <LogOut className="h-4.5 w-4.5" />
@@ -254,5 +320,13 @@ export function AppRoot() {
         </div>
       </div>
     </div>
+  );
+}
+
+export function AppRoot() {
+  return (
+    <LanguageProvider>
+      <AppRootInner />
+    </LanguageProvider>
   );
 }

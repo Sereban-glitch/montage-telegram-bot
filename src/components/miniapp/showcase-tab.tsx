@@ -1,16 +1,18 @@
 'use client';
 
-// Вкладка «Витрина»: галерея готовых работ движка с предпросмотром.
+// Вкладка «Витрина работ»: галерея готовых работ движка с предпросмотром.
 // Дизайн: премиальные постеры с градиентным наложением и синей кнопкой Play.
 
 import { useState } from 'react';
 import { BadgeCheck, Eye, Play, Sparkles, Star } from 'lucide-react';
 import { fmtDuration, fmtViews } from '@/lib/client-api';
 import { hapticTap } from '@/lib/telegram-client';
+import { useI18n } from '@/lib/i18n';
 import type { ShowcaseItem } from '@/lib/types';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 export function ShowcaseTab({ items, reload }: { items: ShowcaseItem[]; reload: () => void }) {
+  const { t } = useI18n();
   const [open, setOpen] = useState<ShowcaseItem | null>(null);
   const shorts = items.filter((i) => i.kind === 'short');
   const longs = items.filter((i) => i.kind === 'long');
@@ -32,10 +34,8 @@ export function ShowcaseTab({ items, reload }: { items: ShowcaseItem[]; reload: 
     <div className="space-y-7 pb-6">
       {/* Заголовок экрана */}
       <div className="space-y-1 px-1">
-        <h2 className="text-[26px] font-bold leading-tight tracking-tight">Витрина</h2>
-        <p className="text-[13px] text-muted-foreground">
-          Смонтировано движком автоматически: нарезки по КСУ, заседания, лекции
-        </p>
+        <h2 className="text-[26px] font-bold leading-tight tracking-tight">{t.showcase.title}</h2>
+        <p className="text-[13px] text-muted-foreground">{t.showcase.subtitle}</p>
       </div>
 
       {/* Баннер-постер */}
@@ -48,22 +48,22 @@ export function ShowcaseTab({ items, reload }: { items: ShowcaseItem[]; reload: 
         <div className="absolute inset-0 bg-gradient-to-r from-black/85 via-black/55 to-black/5" aria-hidden />
         <div className="relative p-6 py-9">
           <span className="mb-2 inline-flex items-center gap-1 rounded-full bg-white/15 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-white/90 backdrop-blur-md">
-            <Sparkles className="h-3 w-3" /> Автоматический монтаж
+            <Sparkles className="h-3 w-3" /> {t.showcase.bannerChip}
           </span>
           <h3 className="text-[22px] font-bold leading-tight tracking-tight text-white">
-            Работы «Монтажной Кухни»
+            {t.showcase.bannerTitle}
           </h3>
           <p className="mt-1 max-w-[80%] text-[12px] leading-relaxed text-white/80">
-            Реальные примеры: Shorts из суда, нарезки по КСУ, длинные заседания с главами.
+            {t.showcase.bannerDesc}
           </p>
         </div>
       </div>
 
       {/* Shorts */}
       {shorts.length > 0 && (
-        <section aria-label="Примеры Shorts" className="space-y-3">
+        <section aria-label={t.showcase.shortsSection} className="space-y-3">
           <h3 className="flex items-center gap-2 px-1 text-[15px] font-bold tracking-tight">
-            Shorts · вертикаль
+            {t.showcase.shortsSection}
             <span className="rounded-full bg-primary/12 px-2 py-0.5 text-[11px] font-bold tabular-nums text-primary dark:bg-primary/20">
               {shorts.length}
             </span>
@@ -117,9 +117,9 @@ export function ShowcaseTab({ items, reload }: { items: ShowcaseItem[]; reload: 
 
       {/* Long */}
       {longs.length > 0 && (
-        <section aria-label="Примеры длинных видео" className="space-y-3">
+        <section aria-label={t.showcase.longSection} className="space-y-3">
           <h3 className="flex items-center gap-2 px-1 text-[15px] font-bold tracking-tight">
-            Long · 1280×720
+            {t.showcase.longSection}
             <span className="rounded-full bg-primary/12 px-2 py-0.5 text-[11px] font-bold tabular-nums text-primary dark:bg-primary/20">
               {longs.length}
             </span>
@@ -175,7 +175,7 @@ export function ShowcaseTab({ items, reload }: { items: ShowcaseItem[]; reload: 
               <DialogHeader className="space-y-1 text-left">
                 <DialogTitle className="pr-4 text-[16px] leading-snug tracking-tight">{open.title}</DialogTitle>
                 <DialogDescription className="text-[12px]">
-                  {open.subtitle ?? 'Пример работы движка Sereban-glitch-video-montage'}
+                  {open.subtitle ?? t.showcase.dialogFallback}
                 </DialogDescription>
               </DialogHeader>
               {open.videoUrl ? (
@@ -194,8 +194,8 @@ export function ShowcaseTab({ items, reload }: { items: ShowcaseItem[]; reload: 
               )}
               <div className="flex items-center gap-2 text-[11.5px] text-muted-foreground">
                 <BadgeCheck className="h-4 w-4 shrink-0 text-primary" />
-                Смонтировано автоматически: субтитры, обложка, EBU R128
-                {open.kind === 'long' && ' · вырезаны паузы'}
+                {t.showcase.dialogNote}
+                {open.kind === 'long' && t.showcase.dialogNoteLong}
               </div>
             </>
           )}

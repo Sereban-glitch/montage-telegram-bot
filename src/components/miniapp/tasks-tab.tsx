@@ -8,7 +8,6 @@ import {
   Ban,
   CheckCircle2,
   Clock,
-  Cpu,
   Download,
   Film,
   Hourglass,
@@ -19,6 +18,7 @@ import {
 } from 'lucide-react';
 import { api, fmtRam, fmtTime } from '@/lib/client-api';
 import { hapticTap } from '@/lib/telegram-client';
+import { useI18n } from '@/lib/i18n';
 import type { Job } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -27,42 +27,6 @@ import { toast } from '@/hooks/use-toast';
 
 function TypeIcon({ type, className }: { type: Job['type']; className?: string }) {
   return type === 'long' ? <Hourglass className={className} /> : <Film className={className} />;
-}
-
-function StatusBadge({ status }: { status: Job['status'] }) {
-  const base = 'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10.5px] font-semibold';
-  switch (status) {
-    case 'queued':
-      return (
-        <span className={`${base} bg-warning/12 text-warning dark:bg-warning/20`}>
-          <Clock className="h-3 w-3" /> В очереди
-        </span>
-      );
-    case 'processing':
-      return (
-        <span className={`${base} bg-primary/12 text-primary dark:bg-primary/25`}>
-          <Loader2 className="h-3 w-3 animate-spin" /> В работе
-        </span>
-      );
-    case 'completed':
-      return (
-        <span className={`${base} bg-success/15 text-success dark:bg-success/20`}>
-          <CheckCircle2 className="h-3 w-3" /> Готово
-        </span>
-      );
-    case 'failed':
-      return (
-        <span className={`${base} bg-destructive/12 text-destructive dark:bg-destructive/25`}>
-          <XCircle className="h-3 w-3" /> Ошибка
-        </span>
-      );
-    default:
-      return (
-        <span className={`${base} bg-black/[0.06] text-muted-foreground dark:bg-white/[0.10]`}>
-          <Ban className="h-3 w-3" /> Отменено
-        </span>
-      );
-  }
 }
 
 function Chip({ icon, children }: { icon: React.ReactNode; children: React.ReactNode }) {
@@ -75,19 +39,32 @@ function Chip({ icon, children }: { icon: React.ReactNode; children: React.React
 }
 
 export function TasksTab({ jobs }: { jobs: Job[] }) {
+  const { t } = useI18n();
   const [cancelling, setCancelling] = useState<string | null>(null);
 
   const active = jobs.filter((j) => j.status === 'queued' || j.status === 'processing');
   const history = jobs.filter((j) => j.status !== 'queued' && j.status !== 'processing');
+
+  const statusText: Record<Job['status'], string> = {
+    queued: t.tasks.stQueued,
+    processing: t.tasks.stProcessing,
+    completed: t.tasks.stCompleted,
+    failed: t.tasks.stFailed,
+    cancelled: t.tasks.stCancelled,
+  };
 
   const cancel = async (id: string) => {
     hapticTap();
     setCancelling(id);
     try {
       await api(`/api/jobs/${id}`, { method: 'DELETE' });
-      toast({ title: 'Задача отменена', description: 'Слот рендера освобождён' });
+      toast({ title: t.tasks.cancelTitle, description: t.tasks.cancelDesc });
     } catch (e) {
-      toast({ title: 'Не удалось отменить', description: e instanceof Error ? e.message : undefined, variant: 'destructive' });
+      toast({
+        title: t.tasks.cancelFail,
+        description: e instanceof Error ? e.message : undefined,
+        variant: 'destructive',
+      });
     } finally {
       setCancelling(null);
     }
@@ -97,17 +74,15 @@ export function TasksTab({ jobs }: { jobs: Job[] }) {
     <div className="space-y-6 pb-6">
       {/* Заголовок экрана */}
       <div className="space-y-1 px-1">
-        <h2 className="text-[26px] font-bold leading-tight tracking-tight">Мои задачи</h2>
-        <p className="text-[13px] text-muted-foreground">
-          FIFO-очередь рендера: один слот, бережём 12 ГБ ОЗУ сервера
-        </p>
+        <h2 className="text-[26px] font-bold leading-tight tracking-tight">{t.tasks.title}</h2>
+        <p className="text-[13px] text-muted-foreground">{t.tasks.subtitle}</p>
       </div>
 
       {/* Активные задачи */}
       {active.length > 0 && (
-        <section aria-label="Активные задачи" className="space-y-3">
+        <section aria-label={t.tasks.onPipeline} className="space-y-3">
           <h3 className="flex items-center gap-2 px-1 text-[15px] font-bold tracking-tight">
-            На конвейере
+            {t.tasks.onPipeline}
             <span className="rounded-full bg-primary/12 px-2 py-0.5 text-[11px] font-bold tabular-nums text-primary dark:bg-primary/20">
               {active.length}
             </span>
@@ -123,17 +98,30 @@ export function TasksTab({ jobs }: { jobs: Job[] }) {
                     <TypeIcon type={job.type} className="h-5 w-5 text-primary" />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-[14px] font-semibold">{job.sourceName ?? 'Видео'}</p>
+                    <p className="truncate text-[14px] font-semibold">{job.sourceName ?? t.tasks.video}</p>
                     <p className="text-[11.5px] text-muted-foreground">
-                      {job.type === 'long' ? 'Long · 1280×720' : 'Short · 1080×1920'} · с {fmtTime(job.createdAt)}
+                      {job.type === 'long' ? t.tasks.longFormat : t.tasks.shortFormat} · {fmtTime(job.createdAt)}
                     </p>
                   </div>
-                  <StatusBadge status={job.status} />
+                  <span
+                    className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10.5px] font-semibold ${
+                      job.status === 'queued'
+                        ? 'bg-warning/12 text-warning dark:bg-warning/20'
+                        : 'bg-primary/12 text-primary dark:bg-primary/25'
+                    }`}
+                  >
+                    {job.status === 'queued' ? (
+                      <Clock className="h-3 w-3" />
+                    ) : (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    )}
+                    {statusText[job.status]}
+                  </span>
                 </div>
 
                 <div className="space-y-2">
                   <div className="flex items-center justify-between text-[12px]">
-                    <span className="text-muted-foreground">{job.stageLabel ?? 'Ожидание слота рендера…'}</span>
+                    <span className="text-muted-foreground">{job.stageLabel ?? t.tasks.waitingSlot}</span>
                     <span className="font-bold tabular-nums text-primary">{job.progress}%</span>
                   </div>
                   <Progress value={job.progress} className="h-2" />
@@ -141,12 +129,12 @@ export function TasksTab({ jobs }: { jobs: Job[] }) {
 
                 <div className="flex flex-wrap items-center gap-1.5">
                   {job.status === 'queued' && job.queuePosition > 0 && (
-                    <Chip icon={<Clock className="h-3 w-3" />}>Позиция: {job.queuePosition}</Chip>
+                    <Chip icon={<Clock className="h-3 w-3" />}>{t.tasks.position(job.queuePosition)}</Chip>
                   )}
                   {job.status === 'processing' && job.ramMb && (
-                    <Chip icon={<MemoryStick className="h-3 w-3" />}>ОЗУ {fmtRam(job.ramMb)} / 12 ГБ</Chip>
+                    <Chip icon={<MemoryStick className="h-3 w-3" />}>{t.tasks.ramChip(fmtRam(job.ramMb))}</Chip>
                   )}
-                  <Chip icon={<Cpu className="h-3 w-3" />}>FIFO · один слот</Chip>
+                  <Chip icon={<Hourglass className="h-3 w-3" />}>{t.tasks.slotChip}</Chip>
                 </div>
 
                 <Button
@@ -156,8 +144,12 @@ export function TasksTab({ jobs }: { jobs: Job[] }) {
                   onClick={() => cancel(job.id)}
                   disabled={cancelling === job.id}
                 >
-                  {cancelling === job.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <XCircle className="h-3.5 w-3.5" />}
-                  Отменить задачу
+                  {cancelling === job.id ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <XCircle className="h-3.5 w-3.5" />
+                  )}
+                  {t.tasks.cancel}
                 </Button>
               </CardContent>
             </Card>
@@ -166,10 +158,10 @@ export function TasksTab({ jobs }: { jobs: Job[] }) {
       )}
 
       {/* История */}
-      <section aria-label="История задач" className="space-y-3">
+      <section aria-label={t.tasks.history} className="space-y-3">
         <h3 className="flex items-center gap-2 px-1 text-[15px] font-bold tracking-tight">
           <ListVideo className="h-4 w-4 text-primary" />
-          История
+          {t.tasks.history}
         </h3>
 
         {history.length === 0 && active.length === 0 && (
@@ -178,10 +170,8 @@ export function TasksTab({ jobs }: { jobs: Job[] }) {
               <Film className="h-7 w-7 text-primary" />
             </div>
             <div className="space-y-1">
-              <p className="text-[14px] font-semibold">Пока пусто</p>
-              <p className="text-[12px] leading-relaxed text-muted-foreground">
-                Закажите монтаж во вкладке Shorts или Long — бот пришлёт готовый final.mp4 сюда и в чат.
-              </p>
+              <p className="text-[14px] font-semibold">{t.tasks.emptyTitle}</p>
+              <p className="text-[12px] leading-relaxed text-muted-foreground">{t.tasks.emptyDesc}</p>
             </div>
           </div>
         )}
@@ -194,31 +184,46 @@ export function TasksTab({ jobs }: { jobs: Job[] }) {
                   className="h-[60px] w-11 shrink-0 rounded-2xl border border-hairline bg-muted bg-cover bg-center"
                   style={{ backgroundImage: job.thumbUrl ? `url('${job.thumbUrl}')` : undefined }}
                   role="img"
-                  aria-label="Обложка результата"
+                  aria-label={t.tasks.sourceAria}
                 />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-[13.5px] font-semibold">{job.sourceName ?? 'Видео'}</p>
+                  <p className="truncate text-[13.5px] font-semibold">{job.sourceName ?? t.tasks.video}</p>
                   <p className="text-[11.5px] text-muted-foreground">
                     {job.type === 'long' ? 'Long' : 'Short'} · {fmtTime(job.createdAt)}
                     {job.resultUrl ? ' · final.mp4' : ''}
                   </p>
-                  <div className="mt-1.5">
-                    <StatusBadge status={job.status} />
+                  <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                    <span
+                      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10.5px] font-semibold ${
+                        job.status === 'completed'
+                          ? 'bg-success/15 text-success dark:bg-success/20'
+                          : job.status === 'failed'
+                            ? 'bg-destructive/12 text-destructive dark:bg-destructive/25'
+                            : 'bg-black/[0.06] text-muted-foreground dark:bg-white/[0.10]'
+                      }`}
+                    >
+                      {job.status === 'completed' ? (
+                        <CheckCircle2 className="h-3 w-3" />
+                      ) : job.status === 'failed' ? (
+                        <XCircle className="h-3 w-3" />
+                      ) : (
+                        <Ban className="h-3 w-3" />
+                      )}
+                      {statusText[job.status]}
+                    </span>
                   </div>
                 </div>
                 {job.status === 'completed' && job.resultUrl && (
                   <a href={job.resultUrl} download={`final_${job.type}_${job.id.slice(0, 6)}.mp4`}>
                     <Button size="sm" className="h-9 gap-1.5 text-[12.5px]">
-                      <Download className="h-3.5 w-3.5" /> Скачать
+                      <Download className="h-3.5 w-3.5" /> {t.tasks.download}
                     </Button>
                   </a>
                 )}
               </div>
               {job.error && <p className="mt-2.5 text-[12px] font-medium text-destructive">{job.error}</p>}
               {job.status === 'completed' && (
-                <p className="mt-2.5 text-[11px] leading-relaxed text-muted-foreground">
-                  Файл отправлен ботом в чат и продублирован ссылкой. Временные файлы удалены.
-                </p>
+                <p className="mt-2.5 text-[11px] leading-relaxed text-muted-foreground">{t.tasks.doneNote}</p>
               )}
             </CardContent>
           </Card>

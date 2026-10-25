@@ -2,21 +2,22 @@
 
 // Вкладка «🎯 ИИ-хуки (Opus Clip)» — главная фича для друзей-блогеров:
 // YouTube-ссылка → анализ Whisper + Hook Scorer → карточки фрагментов
-// с Virality Score → «Смонтировать в 1 клик» (hook_render, priority=10).
+// с Virality Score → «Смонтировать этот фрагмент в 1 клик» (hook_render, priority=10).
 
 import { useMemo, useState } from 'react';
 import {
   Clock3,
   Gauge,
   Loader2,
-  Scissors,
-  Sparkles,
   Target,
   Zap,
 } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
-import { api, fmtDuration } from '@/lib/client-api';
+import { api } from '@/lib/client-api';
+import { hapticTap } from '@/lib/telegram-client';
+import { useI18n } from '@/lib/i18n';
 import type { HookCandidate, Job, User } from '@/lib/types';
+import { OnboardingSteps } from '@/components/miniapp/onboarding-steps';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
@@ -39,13 +40,8 @@ function tc(sec: number): string {
 // Медаль ранга: 1 — золото, 2 — серебро, 3 — бронза
 const MEDAL = { 1: '#FFD60A', 2: '#C7C7CC', 3: '#FF9F0A' } as Record<number, string>;
 
-function scoreColor(score: number): string {
-  if (score >= 90) return 'text-[#30d158]';
-  if (score >= 75) return 'text-primary';
-  return 'text-[#ff9f0a]';
-}
-
 export function HooksTab({ user, jobs }: { user: User; jobs: Job[] }) {
+  const { t } = useI18n();
   const [url, setUrl] = useState('');
   const [creating, setCreating] = useState(false);
 
@@ -72,11 +68,11 @@ export function HooksTab({ user, jobs }: { user: User; jobs: Job[] }) {
   const analyze = async () => {
     const clean = url.trim();
     if (!clean || !/^https?:\/\//i.test(clean)) {
-      toast({ title: 'Нужна ссылка', description: 'Вставьте ссылку на длинное видео с YouTube' });
+      toast({ title: t.hooks.needLinkTitle, description: t.hooks.needLinkDesc });
       return;
     }
     if (!YT_RE.test(clean)) {
-      toast({ title: 'Это не YouTube', description: 'ИИ-хуки работают с youtube.com / youtu.be ссылками' });
+      toast({ title: t.hooks.notYtTitle, description: t.hooks.notYtDesc });
       return;
     }
     setCreating(true);
@@ -93,11 +89,11 @@ export function HooksTab({ user, jobs }: { user: User; jobs: Job[] }) {
       });
       setUrl('');
       toast({
-        title: '🎯 Анализ запущен',
-        description: 'Скачаю только аудио → Whisper по таймкодам → Hook Scorer. Кандидаты появятся здесь через пару минут.',
+        title: t.hooks.startedTitle,
+        description: t.hooks.startedDesc,
       });
     } catch (e) {
-      toast({ title: 'Не удалось запустить анализ', description: e instanceof Error ? e.message : undefined });
+      toast({ title: t.hooks.failAnalyze, description: e instanceof Error ? e.message : undefined });
     } finally {
       setCreating(false);
     }
@@ -105,6 +101,7 @@ export function HooksTab({ user, jobs }: { user: User; jobs: Job[] }) {
 
   const renderCandidate = async (cand: HookCandidate) => {
     if (!lastAnalysis) return;
+    hapticTap();
     try {
       await api('/api/jobs', {
         method: 'POST',
@@ -128,59 +125,41 @@ export function HooksTab({ user, jobs }: { user: User; jobs: Job[] }) {
           },
         }),
       });
-      toast({ title: `🎬 Shorts #${cand.rank} в очереди`, description: `Фрагмент ${tc(cand.start)}–${tc(cand.end)} — фирменный монтаж 1080×1920` });
+      toast({
+        title: t.hooks.queuedTitle(cand.rank, cand.score),
+        description: t.hooks.queuedDesc(`${tc(cand.start)}–${tc(cand.end)}`),
+      });
     } catch (e) {
-      toast({ title: 'Ошибка постановки', description: e instanceof Error ? e.message : undefined });
+      toast({ title: t.hooks.failRender, description: e instanceof Error ? e.message : undefined });
     }
   };
 
   return (
     <div className="space-y-5">
+      {/* Закреплённый онбординг «3 шага» — для чайников */}
+      <OnboardingSteps />
+
       {/* Large Title + подзаголовок */}
       <div className="flex items-start gap-3">
         <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[16px] bg-gradient-to-b from-[#ff9f0a] to-[#ff6b00] shadow-soft">
           <Target className="h-6 w-6 text-white" />
         </div>
         <div className="min-w-0">
-          <h2 className="text-[26px] font-bold leading-tight tracking-tight">ИИ-хуки (Opus Clip)</h2>
-          <p className="text-[13px] leading-snug text-muted-foreground">
-            Превращаю длинные видео в вирусные Shorts за 60 секунд без монтажёров
-          </p>
-        </div>
-      </div>
-
-      {/* Карточка-онбординг: как это работает за 3 шага */}
-      <div className="rounded-3xl border border-primary/25 bg-gradient-to-br from-primary/[0.08] via-primary/[0.02] to-transparent p-4 shadow-soft">
-        <div className="flex items-center gap-2 mb-2">
-          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-white text-xs font-bold">⚡</span>
-          <h3 className="text-[14px] font-bold tracking-tight">Как это работает (просто и понятно):</h3>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-[12px] text-muted-foreground mt-2.5">
-          <div className="flex items-start gap-2 rounded-2xl bg-black/[0.03] dark:bg-white/[0.05] p-2.5">
-            <span className="font-bold text-primary text-[13px]">1️⃣</span>
-            <span><strong>Вставь ссылку</strong> на любое YouTube-видео или стрим ниже</span>
-          </div>
-          <div className="flex items-start gap-2 rounded-2xl bg-black/[0.03] dark:bg-white/[0.05] p-2.5">
-            <span className="font-bold text-primary text-[13px]">2️⃣</span>
-            <span><strong>ИИ найдёт 3 лучших момента</strong> по 35–55 сек с оценкой вирусности</span>
-          </div>
-          <div className="flex items-start gap-2 rounded-2xl bg-black/[0.03] dark:bg-white/[0.05] p-2.5">
-            <span className="font-bold text-primary text-[13px]">3️⃣</span>
-            <span><strong>Жми «Смонтировать»</strong> — готовый Shorts с субтитрами придёт в Telegram!</span>
-          </div>
+          <h2 className="text-[26px] font-bold leading-tight tracking-tight">{t.hooks.title}</h2>
+          <p className="text-[13px] leading-snug text-muted-foreground">{t.hooks.subtitle}</p>
         </div>
       </div>
 
       {/* Источник */}
       <section className="rounded-3xl border border-hairline bg-card p-4 shadow-soft">
         <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-          Источник — ссылка на длинное видео (20–60 мин)
+          {t.hooks.sourceLabel}
         </p>
         <div className="flex flex-col gap-2.5 sm:flex-row">
           <Input
             value={url}
             onChange={(e) => setUrl(e.target.value)}
-            placeholder="https://youtube.com/watch?v=…"
+            placeholder={t.hooks.placeholder}
             inputMode="url"
             autoComplete="off"
             className="h-11 flex-1 rounded-xl"
@@ -192,14 +171,18 @@ export function HooksTab({ user, jobs }: { user: User; jobs: Job[] }) {
             onClick={analyze}
             className="h-[52px] shrink-0 rounded-2xl text-[15px] font-semibold"
           >
-            {creating || activeAnalysis ? <Loader2 className="h-4.5 w-4.5 animate-spin" /> : <Zap className="h-4.5 w-4.5" />}
-            {activeAnalysis ? 'Анализирую…' : 'Найти хуки'}
+            {creating || activeAnalysis ? (
+              <Loader2 className="h-4.5 w-4.5 animate-spin" />
+            ) : (
+              <Zap className="h-4.5 w-4.5" />
+            )}
+            {activeAnalysis || creating ? t.hooks.analyzing : t.hooks.find}
           </Button>
         </div>
         <div className="mt-3 flex flex-wrap gap-1.5 text-[11px] text-muted-foreground">
-          <span className="rounded-full bg-black/[0.04] px-2.5 py-1 dark:bg-white/[0.07]">🔊 только аудио — быстро</span>
-          <span className="rounded-full bg-black/[0.04] px-2.5 py-1 dark:bg-white/[0.07]">🗣 Whisper-таймкоды</span>
-          <span className="rounded-full bg-black/[0.04] px-2.5 py-1 dark:bg-white/[0.07]">🧠 Hook Scorer 35–55 с</span>
+          <span className="rounded-full bg-black/[0.04] px-2.5 py-1 dark:bg-white/[0.07]">{t.hooks.chip1}</span>
+          <span className="rounded-full bg-black/[0.04] px-2.5 py-1 dark:bg-white/[0.07]">{t.hooks.chip2}</span>
+          <span className="rounded-full bg-black/[0.04] px-2.5 py-1 dark:bg-white/[0.07]">{t.hooks.chip3}</span>
         </div>
       </section>
 
@@ -207,13 +190,13 @@ export function HooksTab({ user, jobs }: { user: User; jobs: Job[] }) {
       {activeAnalysis && (
         <section className="animate-fade-up rounded-3xl border border-primary/25 bg-primary/[0.06] p-4 shadow-soft dark:bg-primary/[0.12]">
           <div className="mb-2 flex items-center gap-2.5">
-            <Sparkles className="h-4.5 w-4.5 animate-pulse text-primary" />
+            <Zap className="h-4.5 w-4.5 animate-pulse text-primary" />
             <div className="min-w-0 flex-1">
-              <p className="truncate text-[14px] font-semibold">{activeAnalysis.stageLabel ?? 'Анализ видео'}</p>
+              <p className="truncate text-[14px] font-semibold">{activeAnalysis.stageLabel ?? t.hooks.analysisLabel}</p>
               <p className="text-[11px] text-muted-foreground">
                 {activeAnalysis.status === 'queued'
-                  ? `В очереди · позиция ${activeAnalysis.queuePosition || 1} — ваш приоритет высший`
-                  : 'Whisper разбирает речь по секундам, затем Hook Scorer оценит фрагменты'}
+                  ? t.hooks.queueHint(activeAnalysis.queuePosition || 1)
+                  : t.hooks.runHint}
               </p>
             </div>
             <span className="text-[15px] font-bold tabular-nums text-primary">{activeAnalysis.progress}%</span>
@@ -227,9 +210,9 @@ export function HooksTab({ user, jobs }: { user: User; jobs: Job[] }) {
         <section className="space-y-3">
           <div className="flex items-center justify-between px-1">
             <h3 className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Лучшие моменты {lastAnalysis ? `· ${lastAnalysis.sourceName ?? 'видео'}` : ''}
+              {t.hooks.bestMoments} {lastAnalysis ? `· ${lastAnalysis.sourceName ?? 'видео'}` : ''}
             </h3>
-            <span className="text-[11px] text-muted-foreground">{candidates.length} фрагмента</span>
+            <span className="text-[11px] text-muted-foreground">{t.hooks.nFragments(candidates.length)}</span>
           </div>
           {candidates.map((c) => (
             <article
@@ -249,7 +232,7 @@ export function HooksTab({ user, jobs }: { user: User; jobs: Job[] }) {
                     {c.score}
                   </div>
                   <span className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">
-                    Virality
+                    {t.hooks.virality}
                   </span>
                 </div>
                 <div className="min-w-0 flex-1">
@@ -259,7 +242,7 @@ export function HooksTab({ user, jobs }: { user: User; jobs: Job[] }) {
                     </span>
                     <span className="inline-flex items-center gap-1 text-[11px] tabular-nums text-muted-foreground">
                       <Clock3 className="h-3 w-3" />
-                      {tc(c.start)} · {Math.round(c.duration)} c
+                      {tc(c.start)} · {Math.round(c.duration)} {t.hooks.sec}
                     </span>
                   </div>
                   <p className="text-[14px] font-semibold leading-snug">{c.title}</p>
@@ -267,13 +250,13 @@ export function HooksTab({ user, jobs }: { user: User; jobs: Job[] }) {
                     «{c.quote}»
                   </p>
                   {c.breakdown && (
-                    <div className="mt-2 grid grid-cols-4 gap-1.5" title="Хук в 3 с · Завершённость · Эмоции · Удержание">
+                    <div className="mt-2 grid grid-cols-4 gap-1.5" title={t.hooks.breakdownTitle}>
                       {(
                         [
-                          ['Хук', c.breakdown.hook],
-                          ['Мысль', c.breakdown.completeness],
-                          ['Эмоции', c.breakdown.emotion],
-                          ['Удерж.', c.breakdown.retention],
+                          [t.hooks.bdHook, c.breakdown.hook],
+                          [t.hooks.bdIdea, c.breakdown.completeness],
+                          [t.hooks.bdEmotion, c.breakdown.emotion],
+                          [t.hooks.bdRetention, c.breakdown.retention],
                         ] as const
                       ).map(([label, v]) => (
                         <div key={label}>
@@ -289,11 +272,10 @@ export function HooksTab({ user, jobs }: { user: User; jobs: Job[] }) {
                   )}
                   <Button
                     size="lg"
-                    className="mt-3 h-11 w-full rounded-2xl text-[14px] font-semibold"
+                    className="mt-3 h-11 w-full rounded-2xl text-[13.5px] font-semibold"
                     onClick={() => renderCandidate(c)}
                   >
-                    <Scissors className="h-4 w-4" />
-                    Смонтировать в 1 клик
+                    🎬 {t.hooks.mount}
                   </Button>
                 </div>
               </div>
@@ -306,9 +288,9 @@ export function HooksTab({ user, jobs }: { user: User; jobs: Job[] }) {
       {!candidates.length && !activeAnalysis && (
         <section className="rounded-3xl border border-dashed border-hairline bg-card/50 p-6 text-center">
           <Target className="mx-auto mb-2 h-8 w-8 text-muted-foreground/50" />
-          <p className="text-[13px] font-medium">Хуков пока нет</p>
+          <p className="text-[13px] font-medium">{t.hooks.emptyTitle}</p>
           <p className="mx-auto mt-1 max-w-[280px] text-[12px] leading-relaxed text-muted-foreground">
-            Вставьте ссылку на заседание, интервью или стрим — ИИ найдёт 3–5 фрагментов с максимальным вирусным потенциалом и оценит их Virality Score.
+            {t.hooks.emptyDesc}
           </p>
         </section>
       )}
@@ -317,7 +299,7 @@ export function HooksTab({ user, jobs }: { user: User; jobs: Job[] }) {
       {renderedHooks.length > 0 && (
         <section className="space-y-2">
           <h3 className="px-1 text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Смонтированные фрагменты
+            {t.hooks.rendered}
           </h3>
           {renderedHooks.map((j) => (
             <div
@@ -328,7 +310,7 @@ export function HooksTab({ user, jobs }: { user: User; jobs: Job[] }) {
               <div className="min-w-0 flex-1">
                 <p className="truncate text-[13px] font-medium">{j.sourceName}</p>
                 <p className="text-[11px] text-muted-foreground">
-                  {j.status === 'completed' ? 'Готово · видео в чате и в «Задачах»' : `${j.stageLabel ?? ''} · ${j.progress}%`}
+                  {j.status === 'completed' ? t.hooks.renderedDone : `${j.stageLabel ?? ''} · ${j.progress}%`}
                 </p>
               </div>
               {j.status === 'completed' ? (

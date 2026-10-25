@@ -1,16 +1,18 @@
 'use client';
 
-// Вкладка «Монтаж Shorts»: загрузка, титулы, субтитры, кадр обложки.
-// Дизайн: inset grouped секции iOS + System Blue CTA.
+// Вкладка «Монтаж Shorts»: пресеты «В 1 клик», загрузка, титулы, субтитры, кадр обложки.
+// Дизайн: inset grouped секции iOS + System Blue CTA + человеческая микрокопия «для чайников».
 
 import { useState } from 'react';
-import { Cpu, Languages, Loader2, Type } from 'lucide-react';
+import { Loader2, Type, Wand2 } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { api, fmtDuration } from '@/lib/client-api';
 import { hapticSuccess, hapticTap } from '@/lib/telegram-client';
+import { useI18n } from '@/lib/i18n';
 import type { ShortsParams, User } from '@/lib/types';
 import { DEFAULT_SHORTS } from '@/lib/types';
 import { SourcePicker, type SourceMode } from '@/components/miniapp/source-picker';
+import { OnboardingSteps } from '@/components/miniapp/onboarding-steps';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -20,17 +22,17 @@ import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 
 const LANGS = [
-  { value: 'uk', label: 'Украинская' },
-  { value: 'ru', label: 'Русская' },
-  { value: 'en', label: 'English' },
-];
+  { value: 'uk', key: 'langUk' },
+  { value: 'ru', key: 'langRu' },
+  { value: 'en', key: 'langEn' },
+] as const;
 
 const SUBS = [
-  { value: 'ru', label: 'Русские' },
-  { value: 'uk', label: 'Украинские' },
-  { value: 'en', label: 'English' },
-  { value: 'off', label: 'Без субтитров' },
-];
+  { value: 'ru', key: 'subRu' },
+  { value: 'uk', key: 'subUk' },
+  { value: 'en', key: 'langEn' },
+  { value: 'off', key: 'subOff' },
+] as const;
 
 // Пример строки субтитров для превью — по выбранному языку
 const SUB_SAMPLE: Record<string, string> = {
@@ -38,6 +40,8 @@ const SUB_SAMPLE: Record<string, string> = {
   uk: 'Сьогодні розглядається справа про виділення землі',
   en: 'Today the council hears the land case',
 };
+
+type PresetKey = 'viral' | 'podcast' | 'law';
 
 function GroupLabel({ children }: { children: React.ReactNode }) {
   return (
@@ -131,6 +135,7 @@ function CoverPreview({
 }
 
 export function ShortsTab({ user, onCreated }: { user: User; onCreated: () => void }) {
+  const { t } = useI18n();
   const [mode, setMode] = useState<SourceMode>('upload');
   const [file, setFile] = useState<File | null>(null);
   const [url, setUrl] = useState('');
@@ -143,14 +148,59 @@ export function ShortsTab({ user, onCreated }: { user: User; onCreated: () => vo
 
   const coverTimecode = fmtDuration(Math.max(1, Math.round((clipLength * params.cover_frame) / 100)));
 
+  // ── Быстрые пресеты стиля «В 1 клик»: заполняют все поля автоматически ──
+  const applyPreset = (key: PresetKey) => {
+    hapticTap();
+    const preset: ShortsParams =
+      key === 'viral'
+        ? {
+            ...params,
+            title_line1: t.shorts.presetViralTitle,
+            title_line2: '',
+            overlay_label: t.shorts.presetViralOverlay,
+            pill_text: t.shorts.presetViralPill,
+            speech_lang: 'uk',
+            subtitle_lang: 'ru',
+            bilingual: true,
+            cover_frame: 40,
+          }
+        : key === 'podcast'
+          ? {
+              ...params,
+              title_line1: t.shorts.presetPodcastTitle,
+              title_line2: '',
+              overlay_label: t.shorts.presetPodcastOverlay,
+              pill_text: t.shorts.presetPodcastPill,
+              speech_lang: 'uk',
+              subtitle_lang: 'off',
+              bilingual: false,
+              cover_frame: 20,
+            }
+          : {
+              ...params,
+              title_line1: t.shorts.presetLawTitle,
+              title_line2: '',
+              overlay_label: t.shorts.presetLawOverlay,
+              pill_text: t.shorts.presetLawPill,
+              speech_lang: 'uk',
+              subtitle_lang: 'ru',
+              bilingual: true,
+              cover_frame: 35,
+            };
+    if (key === 'viral' || key === 'law') setClipLength(45);
+    else setClipLength(60);
+    setParams(preset);
+    toast({ title: `✨ ${t.shorts.presetAppliedTitle}`, description: t.shorts.presetAppliedDesc });
+  };
+
   const submit = async () => {
     hapticTap();
     if (mode === 'upload' && !file) {
-      toast({ title: 'Прикрепите видеофайл', variant: 'destructive' });
+      toast({ title: t.shorts.needFile, variant: 'destructive' });
       return;
     }
     if (mode !== 'upload' && !url.trim()) {
-      toast({ title: 'Вставьте ссылку на видео', variant: 'destructive' });
+      toast({ title: t.shorts.needUrl, variant: 'destructive' });
       return;
     }
     setSubmitting(true);
@@ -165,109 +215,88 @@ export function ShortsTab({ user, onCreated }: { user: User; onCreated: () => vo
       await api<{ job: { id: string } }>('/api/jobs', { method: 'POST', body: form });
       hapticSuccess();
       toast({
-        title: 'Задача в очереди 🎬',
-        description: 'Бот пришлёт статусы: транскрипция → рендер → готово',
+        title: t.shorts.queuedTitle,
+        description: t.shorts.queuedDesc,
       });
       setFile(null);
       setUrl('');
       setParams({ ...DEFAULT_SHORTS });
       onCreated();
     } catch (e) {
-      toast({ title: 'Не удалось поставить задачу', description: e instanceof Error ? e.message : undefined, variant: 'destructive' });
+      toast({
+        title: t.shorts.failQueue,
+        description: e instanceof Error ? e.message : undefined,
+        variant: 'destructive',
+      });
     } finally {
       setSubmitting(false);
     }
   };
 
+  const langLabel = (key: (typeof LANGS)[number]['key']) => t.shorts[key];
+  const subLabel = (key: (typeof SUBS)[number]['key']) => t.shorts[key];
+
   return (
     <div className="md:grid md:grid-cols-[minmax(0,1fr)_360px] md:items-start md:gap-7 lg:grid-cols-[minmax(0,1fr)_420px]">
       <div className="space-y-6 pb-6">
+      {/* Закреплённый онбординг «3 шага» */}
+      <OnboardingSteps />
+
       {/* Заголовок экрана */}
       <div className="space-y-1 px-1">
-        <h2 className="text-[26px] font-bold leading-tight tracking-tight">Монтаж Shorts</h2>
-        <p className="text-[13px] text-muted-foreground">
-          Вертикаль 1080×1920 · сочный ТВ-звук EBU R128 · субтитры с автовыравниванием
-        </p>
+        <h2 className="text-[26px] font-bold leading-tight tracking-tight">{t.shorts.title}</h2>
+        <p className="text-[13px] text-muted-foreground">{t.shorts.subtitle}</p>
       </div>
 
-      {/* Готовые пресеты в 1 клик для новичков */}
-      <section className="space-y-2">
-        <GroupLabel>Готовые стили в 1 клик (для чайников и профи)</GroupLabel>
-        <div className="grid grid-cols-3 gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              hapticTap();
-              setParams((p) => ({
-                ...p,
-                title_line1: 'ШОК! ВЫ НЕ ПОВЕРИТЕ',
-                title_line2: 'СМОТРИ ДО КОНЦА',
-                pill_text: 'ВИРУСНЫЙ ХИТ 🔥',
-                overlay_label: 'YouTube Shorts',
-                bilingual: true,
-                speech_lang: 'uk',
-                subtitle_lang: 'ru',
-              }));
-              toast({ title: 'Пресет применён 🔥', description: 'Вирусный Shorts: золотой стиль + укр/рус субтитры' });
-            }}
-            className="flex flex-col items-center gap-1 rounded-2xl border border-hairline bg-card p-3 text-center transition-all hover:border-primary/50 hover:bg-primary/[0.04] active:scale-95"
-          >
-            <span className="text-xl">🔥</span>
-            <span className="text-[12px] font-bold">Вирусный Shorts</span>
-            <span className="text-[10px] text-muted-foreground">Макс. охват</span>
-          </button>
+      {/* Пресеты стиля «В 1 клик» */}
+      <section className="space-y-2" aria-label={t.shorts.presetsLabel}>
+        <GroupLabel>{t.shorts.presetsLabel}</GroupLabel>
+        <div className="-mx-4 flex snap-x gap-2.5 overflow-x-auto px-4 pb-1 md:mx-0 md:grid md:grid-cols-3 md:px-0">
+          {(
+            [
+              ['viral', t.shorts.presetViral, t.shorts.presetViralHint],
+              ['podcast', t.shorts.presetPodcast, t.shorts.presetPodcastHint],
+              ['law', t.shorts.presetLaw, t.shorts.presetLawHint],
+            ] as const
+          ).map(([key, name, hint]) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => applyPreset(key)}
+              className="tap-none w-[62%] min-w-[150px] shrink-0 snap-start rounded-2xl border border-hairline bg-card px-3.5 py-3 text-left shadow-soft transition-all duration-200 hover:border-primary/45 hover:shadow-float active:scale-[0.97] md:w-auto md:min-w-0"
+            >
+              <span className="block truncate text-[13.5px] font-semibold">{name}</span>
+              <span className="mt-0.5 block text-[11px] leading-snug text-muted-foreground">{hint}</span>
+            </button>
+          ))}
+        </div>
+      </section>
 
-          <button
-            type="button"
-            onClick={() => {
-              hapticTap();
-              setParams((p) => ({
-                ...p,
-                title_line1: 'СУДОВИЙ ПРЕЦЕДЕНТ',
-                title_line2: 'ВЕРХОВНИЙ СУД',
-                pill_text: 'ЗАХИСТ ПРАВ ⚖️',
-                overlay_label: 'Свободные Люди Запорожья',
-                bilingual: true,
-                speech_lang: 'uk',
-                subtitle_lang: 'ru',
-              }));
-              toast({ title: 'Пресет применён ⚖️', description: 'Суд и Закон: солидная карточка дела + подложка' });
-            }}
-            className="flex flex-col items-center gap-1 rounded-2xl border border-hairline bg-card p-3 text-center transition-all hover:border-primary/50 hover:bg-primary/[0.04] active:scale-95"
-          >
-            <span className="text-xl">⚖️</span>
-            <span className="text-[12px] font-bold">Суд и Закон</span>
-            <span className="text-[10px] text-muted-foreground">Правозащита</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              hapticTap();
-              setParams((p) => ({
-                ...p,
-                title_line1: 'ГЛАВНЫЙ ИНСАЙТ',
-                title_line2: 'ЭТО ВАЖНО ЗНАТЬ',
-                pill_text: 'ИНТЕРВЬЮ 🎙️',
-                overlay_label: 'Подкаст',
-                bilingual: false,
-                speech_lang: 'uk',
-                subtitle_lang: 'uk',
-              }));
-              toast({ title: 'Пресет применён 🎙️', description: 'Подкаст: чистый звук + автонарезка' });
-            }}
-            className="flex flex-col items-center gap-1 rounded-2xl border border-hairline bg-card p-3 text-center transition-all hover:border-primary/50 hover:bg-primary/[0.04] active:scale-95"
-          >
-            <span className="text-xl">🎙️</span>
-            <span className="text-[12px] font-bold">Подкаст / Блог</span>
-            <span className="text-[10px] text-muted-foreground">Интервью</span>
-          </button>
+      {/* Что вы получаете — человеческими словами, без технических терминов */}
+      <section aria-label="Возможности монтажа">
+        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+          {(
+            [
+              [t.shorts.featSound, t.shorts.featSoundDesc],
+              [t.shorts.featReach, t.shorts.featReachDesc],
+              [t.shorts.featCover, t.shorts.featCoverDesc],
+              [t.shorts.featCut, t.shorts.featCutDesc],
+            ] as const
+          ).map(([name, desc]) => (
+            <div
+              key={name}
+              className="rounded-2xl border border-hairline bg-card/70 px-3.5 py-3 shadow-soft"
+            >
+              <p className="text-[12.5px] font-semibold leading-snug">{name}</p>
+              <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">{desc}</p>
+            </div>
+          ))}
         </div>
       </section>
 
       {/* Источник */}
-      <section className="space-y-2" aria-label="Источник видео">
-        <GroupLabel>Источник</GroupLabel>
+      <section className="space-y-2" aria-label={t.shorts.groupSource}>
+        <GroupLabel>{t.shorts.groupSource}</GroupLabel>
         <Card className="gap-0 py-4">
           <CardContent className="px-4">
             <SourcePicker mode={mode} onModeChange={setMode} file={file} onFileChange={setFile} url={url} onUrlChange={setUrl} />
@@ -276,74 +305,74 @@ export function ShortsTab({ user, onCreated }: { user: User; onCreated: () => vo
       </section>
 
       {/* Титры и плашка */}
-      <section className="space-y-2" aria-label="Титры и плашка">
-        <GroupLabel>Титры и плашка</GroupLabel>
+      <section className="space-y-2" aria-label={t.shorts.groupTitles}>
+        <GroupLabel>{t.shorts.groupTitles}</GroupLabel>
         <Card className="gap-0 py-4">
           <CardContent className="space-y-3.5 px-4">
             <div className="grid grid-cols-2 gap-2.5">
               <Input
                 value={params.title_line1}
                 onChange={(e) => set('title_line1', e.target.value)}
-                placeholder="Титул · строка 1"
+                placeholder={t.shorts.titlePlaceholder1}
                 maxLength={40}
-                aria-label="Титул, строка 1"
+                aria-label={t.shorts.titlePlaceholder1}
               />
               <Input
                 value={params.title_line2}
                 onChange={(e) => set('title_line2', e.target.value)}
-                placeholder="Титул · строка 2"
+                placeholder={t.shorts.titlePlaceholder2}
                 maxLength={40}
-                aria-label="Титул, строка 2"
+                aria-label={t.shorts.titlePlaceholder2}
               />
             </div>
             <div className="grid grid-cols-2 gap-2.5">
               <Input
                 value={params.overlay_label}
                 onChange={(e) => set('overlay_label', e.target.value)}
-                placeholder="КСУ • 29.09.2026"
+                placeholder={t.shorts.overlayPlaceholder}
                 maxLength={30}
-                aria-label="Плашка-лейбл"
+                aria-label={t.shorts.overlayPlaceholder}
               />
               <Input
                 value={params.pill_text}
                 onChange={(e) => set('pill_text', e.target.value)}
-                placeholder="ЩО ЦЕ ЗМІНЮЄ?"
+                placeholder={t.shorts.pillPlaceholder}
                 maxLength={30}
-                aria-label="Текст пилюли на обложке"
+                aria-label={t.shorts.pillPlaceholder}
               />
             </div>
             <p className="flex items-start gap-1.5 text-[11px] leading-relaxed text-muted-foreground">
               <Type className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
-              Титул рендерится сверху кадра, плашка — на обложке 1080×1920.
+              {t.shorts.titlesNote}
             </p>
           </CardContent>
         </Card>
       </section>
 
       {/* Субтитры */}
-      <section className="space-y-2" aria-label="Субтитры">
-        <GroupLabel>Субтитры</GroupLabel>
+      <section className="space-y-2" aria-label={t.shorts.groupSubs}>
+        <GroupLabel>{t.shorts.groupSubs}</GroupLabel>
         <Card className="gap-0 py-4">
           <CardContent className="space-y-3.5 px-4">
             <div className="grid grid-cols-2 gap-2.5">
               <div className="space-y-1.5">
-                <Label className="text-[12px] text-muted-foreground">Язык речи</Label>
+                <Label className="text-[12px] text-muted-foreground">{t.shorts.speechLang}</Label>
                 <Select value={params.speech_lang} onValueChange={(v) => set('speech_lang', v)}>
-                  <SelectTrigger aria-label="Язык речи" className="w-full"><SelectValue /></SelectTrigger>
+                  <SelectTrigger aria-label={t.shorts.speechLang} className="w-full"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {LANGS.map((l) => (
-                      <SelectItem key={l.value} value={l.value}>{l.label}</SelectItem>
+                      <SelectItem key={l.value} value={l.value}>{langLabel(l.key)}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label className="text-[12px] text-muted-foreground">Язык субтитров</Label>
+                <Label className="text-[12px] text-muted-foreground">{t.shorts.subLang}</Label>
                 <Select value={params.subtitle_lang} onValueChange={(v) => set('subtitle_lang', v)}>
-                  <SelectTrigger aria-label="Язык субтитров" className="w-full"><SelectValue /></SelectTrigger>
+                  <SelectTrigger aria-label={t.shorts.subLang} className="w-full"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {SUBS.map((l) => (
-                      <SelectItem key={l.value} value={l.value}>{l.label}</SelectItem>
+                      <SelectItem key={l.value} value={l.value}>{subLabel(l.key)}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -351,9 +380,9 @@ export function ShortsTab({ user, onCreated }: { user: User; onCreated: () => vo
             </div>
             <label className="flex cursor-pointer items-center justify-between gap-3 rounded-2xl bg-black/[0.025] px-3.5 py-3 dark:bg-white/[0.04]">
               <span className="text-[13px] font-medium leading-snug">
-                🇺🇦➡️🇷🇺 Двуязычный режим (в 3–4 раза больше просмотров)
+                {t.shorts.bilingual}
                 <span className="block text-[11px] font-normal text-muted-foreground">
-                  Спикер говорит українською ➡️ субтитры крупно на русском на подложке
+                  {t.shorts.bilingualDesc}
                 </span>
               </span>
               <Switch
@@ -362,7 +391,7 @@ export function ShortsTab({ user, onCreated }: { user: User; onCreated: () => vo
                   hapticTap();
                   set('bilingual', v);
                 }}
-                aria-label="Двуязычный режим субтитров"
+                aria-label={t.shorts.bilingual}
               />
             </label>
           </CardContent>
@@ -370,15 +399,15 @@ export function ShortsTab({ user, onCreated }: { user: User; onCreated: () => vo
       </section>
 
       {/* Обложка */}
-      <section className="space-y-2" aria-label="Кадр обложки">
-        <GroupLabel>🖼️ Кликбейтный стоп-кадр для обложки (1080×1920)</GroupLabel>
+      <section className="space-y-2" aria-label={t.shorts.groupCover}>
+        <GroupLabel>{t.shorts.groupCover}</GroupLabel>
         <Card className="gap-0 py-4">
           <CardContent className="space-y-4 px-4">
             <CoverPreview params={params} size="sm" className="mx-auto w-[46%] md:hidden" />
 
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
-                <Label className="text-[12px] text-muted-foreground">Секунда кадра с эмоцией лица</Label>
+                <Label className="text-[12px] text-muted-foreground">{t.shorts.coverPosition}</Label>
                 <span className="rounded-full bg-primary/12 px-2.5 py-0.5 font-mono text-[11px] font-semibold tabular-nums text-primary dark:bg-primary/20">
                   {coverTimecode}
                 </span>
@@ -389,7 +418,7 @@ export function ShortsTab({ user, onCreated }: { user: User; onCreated: () => vo
                 min={0}
                 max={100}
                 step={1}
-                aria-label="Позиция кадра обложки"
+                aria-label={t.shorts.coverPosition}
               />
             </div>
 
@@ -401,10 +430,10 @@ export function ShortsTab({ user, onCreated }: { user: User; onCreated: () => vo
                 value={clipLength}
                 onChange={(e) => setClipLength(Number(e.target.value) || 0)}
                 className="h-9 w-24 text-[13px] tabular-nums"
-                aria-label="Длительность клипа, сек"
+                aria-label={t.shorts.clipLengthLabel}
               />
               <span className="text-[11px] leading-snug text-muted-foreground">
-                сек — общая длина видео для расчёта таймкода
+                {t.shorts.clipLengthHint}
               </span>
             </div>
           </CardContent>
@@ -414,31 +443,24 @@ export function ShortsTab({ user, onCreated }: { user: User; onCreated: () => vo
       {/* CTA — мобильная версия (на десктопе кнопка в панели предпросмотра) */}
       <div className="space-y-3 pt-1 md:hidden">
         <Button size="lg" className="h-[52px] w-full text-[15px]" onClick={submit} disabled={submitting}>
-          {submitting ? <Loader2 className="h-5 w-5 animate-spin" /> : '🚀 Смонтировать в 1 клик'}
+          {submitting ? <Loader2 className="h-5 w-5 animate-spin" /> : t.shorts.cta}
         </Button>
         <p className="text-center text-[12px] text-muted-foreground">
-          Осталось сегодня:{' '}
-          <span className="font-semibold tabular-nums text-foreground">
-            {user.dailyLimit - user.dailyUsed} из {user.dailyLimit}
-          </span>{' '}
-          задач · готовый Shorts прилетит в Telegram
+          {t.shorts.usedToday(user.dailyUsed, user.dailyLimit)}
         </p>
-        <div className="flex items-start gap-2 rounded-2xl border border-hairline bg-card/60 px-3.5 py-3">
-          <Cpu className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-          <p className="text-[11px] leading-relaxed text-muted-foreground">
-            🔊 <span className="font-medium text-foreground">Сочный ТВ-звук EBU R128</span> + золотая рамка + пословные субтитры DejaVu Sans Bold.
-          </p>
-        </div>
+        <p className="text-center text-[11px] leading-relaxed text-muted-foreground/80">
+          {t.shorts.progressNote}
+        </p>
       </div>
 
       </div>
 
       {/* Desktop-панель предпросмотра: большой кадр 1080×1920 + кнопка запуска */}
-      <aside className="hidden md:sticky md:top-24 md:block" aria-label="Предпросмотр кадра обложки">
+      <aside className="hidden md:sticky md:top-24 md:block" aria-label={t.shorts.previewLabel}>
         <div className="space-y-4 rounded-3xl border border-hairline bg-card/70 p-5 shadow-soft">
           <div className="flex items-center justify-between px-1">
             <p className="text-[12px] font-semibold uppercase tracking-[0.07em] text-muted-foreground">
-              Предпросмотр 1080×1920
+              {t.shorts.previewLabel}
             </p>
             <span className="rounded-full bg-primary/12 px-2.5 py-0.5 font-mono text-[11px] font-semibold tabular-nums text-primary dark:bg-primary/20">
               {coverTimecode}
@@ -459,20 +481,16 @@ export function ShortsTab({ user, onCreated }: { user: User; onCreated: () => vo
           </div>
 
           <Button size="lg" className="h-[52px] w-full text-[15px]" onClick={submit} disabled={submitting}>
-            {submitting ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Поставить в очередь рендера'}
+            {submitting ? <Loader2 className="h-5 w-5 animate-spin" /> : t.shorts.cta}
           </Button>
 
           <p className="text-center text-[12px] text-muted-foreground">
-            Использовано сегодня:{' '}
-            <span className="font-semibold tabular-nums text-foreground">
-              {user.dailyUsed}/{user.dailyLimit}
-            </span>{' '}
-            задач · бот пришлёт final.mp4 в чат
+            {t.shorts.usedToday(user.dailyUsed, user.dailyLimit)}
           </p>
 
           <p className="flex items-start gap-1.5 text-[11px] leading-relaxed text-muted-foreground">
-            <Cpu className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
-            whisper → нарезка → render_short.py → loudnorm I=-14 · прогресс во вкладке «Задачи»
+            <Wand2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+            {t.shorts.progressNote}
           </p>
         </div>
       </aside>
