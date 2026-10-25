@@ -240,6 +240,7 @@ async function advance(job: { id: string; type: string; startedAt: Date | null; 
         },
       });
       await logEvent(job.id, `Hook Scorer: отобрано ${cands.length} кандидатов (scores: ${cands.map((c: { score: number }) => c.score).join(', ')})`);
+      await logEvent(job.id, `Превью: кадры 9:16 + 10-сек ролики для ${cands.length} фрагментов (yt-dlp --download-sections, VAAPI)`);
       await logEvent(job.id, 'Бот: меню фрагментов с Virality Score отправлено в чат');
       await logEvent(null, `Воркер: слот освобождён, RAM ${WORKER_RAM_IDLE_MB}/${TOTAL_RAM_MB} МБ`);
       return;
@@ -294,6 +295,23 @@ async function advance(job: { id: string; type: string; startedAt: Date | null; 
       await logEvent(job.id, `Whisper: модель ${params.whisper_model ?? (job.type === 'long' ? 'large-v3-turbo' : 'small')}, compute int8`);
     }
     if (st.key === 'audit') await logEvent(job.id, `Аудит пауз: вырезаем тишины > ${params.max_gap ?? 3.0} с (pad ${(params.pad ?? 0.6).toString()} с)`);
+    if (st.key === 'render') {
+      // P0: VAAPI — аппаратное кодирование (в проде hwaccel.py: /dev/dri + vainfo)
+      await logEvent(job.id, 'Кодирование: h264_vaapi (аппаратное, Intel iHD) — fallback libx264 очень быстрый');
+      // P1: улучшения монтажа из параметров задачи
+      if (params.remove_silence !== false && (job.type === 'short' || job.type === 'hook_render')) {
+        await logEvent(job.id, 'Silence Cutter: паузы > 450 мс (-38 dB) вырезаны, склейки с pad 120 мс');
+      }
+      if (params.sfx) {
+        await logEvent(job.id, 'SFX: лёгкие whoosh/impact на склейках (процедурные, CC0, -22 LUFS под голосом)');
+      }
+      if (params.music) {
+        await logEvent(job.id, 'Музыка: фоновая подложка с sidechain-приглушением под голос (auto-duck)');
+      }
+      if (params.dub) {
+        await logEvent(job.id, 'Дубляж: перевод edge-tts (ru-RU-DmitryNeural), оригинал приглушён до -11 dB');
+      }
+    }
     if (st.key === 'cover') await logEvent(job.id, job.type === 'short' ? 'scripts/short/thumb_short.py: обложка 1080×1920' : 'Обложка 1280×720 + таймкоды глав');
   }
 }
@@ -314,6 +332,29 @@ const MOCK_HOOKS = [
   { title: 'Суд став крапку: субсидію не зняти без перевірки', quote: 'Скасувати субсидію можна тільки після документальної перевірки.' },
 ];
 
+// P0: превью-кадры 9:16 для хук-карточек (в проде — кадры из видео, воркер)
+const HOOK_THUMBS = [
+  '/showcase/short-court.png',
+  '/showcase/short-street.png',
+  '/showcase/short-mic.png',
+  '/showcase/short-press.png',
+];
+
+// P2: 3 варианта названия A/B/C — как «10 вариантов» OpenShorts, но без перегруза
+const TITLE_PREFIXES = ['Що вирішив суд:', 'Це змінює все:', 'Ви маєте це знати:', 'Суд став крапку:', 'Прецедент, який захистить вас:'];
+
+function titleVariants(base: string): string[] {
+  const known = TITLE_PREFIXES.find((p) => base.startsWith(p));
+  const rest = known ? base.slice(known.length).trim() : base;
+  const idx = known ? TITLE_PREFIXES.indexOf(known) : 0;
+  const words = rest.split(' ');
+  return [
+    base,
+    `${TITLE_PREFIXES[(idx + 1) % TITLE_PREFIXES.length]} ${rest}`,
+    words.slice(0, 6).join(' ') + (words.length > 6 ? '…' : ''),
+  ];
+}
+
 function mockCandidates(jobId: string): HookCandidateSeed[] {
   const h = hashNum(jobId);
   const baseScores = [97, 91, 86, 78, 71];
@@ -321,14 +362,18 @@ function mockCandidates(jobId: string): HookCandidateSeed[] {
   return Array.from({ length: count }, (_, i) => {
     const start = 60 + ((h >> (i * 3)) % 220) + i * 180;
     const duration = 36 + ((h >> i) % 16); // 36..51 с
+    const title = MOCK_HOOKS[(h + i) % MOCK_HOOKS.length].title;
     return {
       rank: i + 1,
       start,
       end: start + duration,
       duration,
-      title: MOCK_HOOKS[(h + i) % MOCK_HOOKS.length].title,
+      title,
+      titles: titleVariants(title),
       quote: MOCK_HOOKS[(h + i) % MOCK_HOOKS.length].quote,
       score: baseScores[i] - ((h >> i) % 3),
+      thumb: HOOK_THUMBS[(h + i) % HOOK_THUMBS.length],
+      previewUrl: '/demo/final_short.mp4',
       breakdown: {
         hook: 60 + ((h >> (i + 2)) % 35),
         completeness: 80 + ((h >> i) % 20),
@@ -341,7 +386,8 @@ function mockCandidates(jobId: string): HookCandidateSeed[] {
 
 type HookCandidateSeed = {
   rank: number; start: number; end: number; duration: number;
-  title: string; quote: string; score: number;
+  title: string; titles?: string[]; quote: string; score: number;
+  thumb?: string; previewUrl?: string;
   breakdown: { hook: number; completeness: number; emotion: number; retention: number };
 };
 

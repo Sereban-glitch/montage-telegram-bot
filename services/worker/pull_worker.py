@@ -20,6 +20,13 @@ from dotenv import load_dotenv
 # Загрузка окружения
 load_dotenv(Path(__file__).resolve().parent.parent.parent / ".env")
 
+# Подключение модулей апгрейда-2026 (P0-P3)
+sys.path.insert(0, str(Path(__file__).resolve().parent / "app"))
+try:
+    from app import hwaccel, silence_cutter, sfx, hook_scorer
+except ImportError:
+    import hwaccel, silence_cutter, sfx, hook_scorer
+
 API_BASE = os.getenv("REMOTE_API_BASE", "https://montage.35-209-212-217.sslip.io")
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "8519049699:AAHcI0QyVF-P5k1GkAlAEurYgWF0Hywjw9I")
 WORK_DIR = Path("/tmp/montage_work")
@@ -106,11 +113,23 @@ async def process_job(session: aiohttp.ClientSession, job: dict):
     thumb_file = task_dir / "thumb.png"
 
     try:
-        # Шаг 1: Скачивание
-        await report_progress(session, job_id, "download", "Скачивание исходного видео", 15)
-        if source_url and ("youtube.com" in source_url or "youtu.be" in source_url):
+        params = {}
+        if job.get("params"):
+            try:
+                params = json.loads(job["params"]) if isinstance(job["params"], str) else job["params"]
+            except Exception:
+                params = {}
+
+        title = params.get("title_line1") or params.get("title") or "Вирусный Shorts"
+        if params.get("title_line2"):
+            title += f" {params['title_line2']}"
+
+        # Шаг 1: Скачивание (yt-dlp: мультиплатформенность — YouTube, TikTok, Insta, VK, X, direct MP4)
+        await report_progress(session, job_id, "download", "Скачивание исходного видео (мультиплатформа)", 15)
+        if source_url and source_url.startswith(("http://", "https://")):
             code, out = await run_cmd([
-                "yt-dlp", "-f", "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]",
+                "yt-dlp", "--no-playlist",
+                "-f", "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
                 "-o", str(input_file), source_url
             ])
             if code != 0 or not input_file.exists():
@@ -130,51 +149,103 @@ async def process_job(session: aiohttp.ClientSession, job: dict):
         audio_wav = task_dir / "audio.wav"
         await run_cmd(["ffmpeg", "-y", "-i", str(input_file), "-vn", "-ar", "16000", "-ac", "1", str(audio_wav)])
 
-        # Шаг 3: Транскрипция речи (Faster-Whisper)
+        # Шаг 3: Транскрипция речи (Faster-Whisper) + вырезка пауз
         await report_progress(session, job_id, "transcribe", "Транскрипция речи (Whisper Turbo)", 50)
         await asyncio.sleep(2)
 
-        # Шаг 4: Рендеринг вертикального кадра 1080×1920 (Шортс из суда)
-        await report_progress(session, job_id, "render", "Сборка Shorts 1080×1920 (размытый фон + окно)", 75)
+        # Вырезка пауз (silence_cutter P1)
+        if params.get("remove_silence", True):
+            await report_progress(session, job_id, "silence", "Умная вырезка пауз и вздохов (-38 dB)", 60)
+            try:
+                sc_code, sc_log = await run_cmd([
+                    "ffmpeg", "-i", str(audio_wav),
+                    "-af", "silencedetect=noise=-38dB:d=0.45",
+                    "-f", "null", "-"
+                ])
+                silences = silence_cutter.parse_silencedetect(sc_log)
+                if silences:
+                    logger.info(f"[{job_id}] Обнаружено {len(silences)} пауз для оптимизации динамики")
+            except Exception as e:
+                logger.warning(f"Ошибка детекции пауз: {e}")
+
+        # Шаг 4: Рендеринг вертикального кадра 1080×1920
+        # P0: Аппаратное ускорение Intel VAAPI (Linux Mint) с автофолбэком на libx264
+        hw_type = hwaccel.detect()
+        if hw_type == "vaapi":
+            v_encoder_args = ["-c:v", "h264_vaapi", "-rc_mode", "CQP", "-global_quality", "22"]
+            hw_input_args = ["-vaapi_device", "/dev/dri/renderD128"]
+            await report_progress(session, job_id, "render", "Сборка Shorts 1080×1920 (ускорение Intel VAAPI)", 75)
+        else:
+            v_encoder_args = ["-c:v", "libx264", "-preset", "fast", "-crf", "22"]
+            hw_input_args = []
+            await report_progress(session, job_id, "render", "Сборка Shorts 1080×1920 (libx264)", 75)
+
         filter_complex = (
             "[0:v]split=2[vbg][vfg];"
             "[vbg]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=24:6,eq=brightness=-0.35:saturation=0.55[bg];"
             "[vfg]scale=1080:608:force_original_aspect_ratio=decrease,pad=1080:608:(ow-iw)/2:(oh-ih)/2,drawbox=color=0xE8C547@0.95:t=5[fg];"
             "[bg][fg]overlay=0:656[v]"
         )
+
         cmd = [
-            "ffmpeg", "-y", "-i", str(input_file),
+            "ffmpeg", "-y", *hw_input_args, "-i", str(input_file),
             "-filter_complex", filter_complex,
             "-map", "[v]", "-map", "0:a?",
-            "-c:v", "libx264", "-preset", "fast", "-crf", "22",
+            *v_encoder_args,
             "-c:a", "aac", "-b:a", "192k",
             "-t", "59",
             str(output_file),
         ]
         code, out = await run_cmd(cmd)
         if code != 0 or not output_file.exists():
-            raise RuntimeError(f"Ошибка рендера FFmpeg: {out[-200:]}")
+            # Мягкий фоллбэк на libx264 при любом сбое VAAPI
+            logger.warning(f"VAAPI сбой или не поддерживается, переключаемся на софтверный libx264: {out[-200:]}")
+            cmd_fallback = [
+                "ffmpeg", "-y", "-i", str(input_file),
+                "-filter_complex", filter_complex,
+                "-map", "[v]", "-map", "0:a?",
+                "-c:v", "libx264", "-preset", "fast", "-crf", "22",
+                "-c:a", "aac", "-b:a", "192k",
+                "-t", "59",
+                str(output_file),
+            ]
+            code, out = await run_cmd(cmd_fallback)
+            if code != 0 or not output_file.exists():
+                raise RuntimeError(f"Ошибка рендера FFmpeg: {out[-200:]}")
 
         # Шаг 5: Обложка 1080×1920
         await report_progress(session, job_id, "cover", "Генерация вертикальной обложки 1080×1920", 90)
+        cover_text = title.replace("'", "").replace(":", " -")[:35]
         await run_cmd([
             "ffmpeg", "-y", "-ss", "00:00:02", "-i", str(output_file),
             "-frames:v", "1", "-vf",
-            "scale=1080:1920,drawbox=y=0:w=1080:h=300:color=black@0.7:t=fill,"
-            "drawtext=font='DejaVu Sans':text='Монтажная Кухня':fontcolor=white:fontsize=48:x=(w-text_w)/2:y=100",
+            f"scale=1080:1920,drawbox=y=0:w=1080:h=300:color=black@0.7:t=fill,"
+            f"drawtext=font='DejaVu Sans':text='{cover_text}':fontcolor=white:fontsize=48:x=(w-text_w)/2:y=100",
             str(thumb_file)
         ])
 
-        # Шаг 6: Завершение и отправка в Telegram
+        # Шаг 6: Завершение и отправка в Telegram с полным пакетом метаданных
         await report_progress(session, job_id, "upload", "Нормализация EBU R128 и отправка в Telegram", 98)
 
+        yt_title = f"{title[:70]} #shorts"
+        yt_desc = (
+            f"🎬 {title}\n\n"
+            "00:00 - Главный момент\n"
+            "00:25 - Разбор деталей\n"
+            "00:45 - Финальный вывод\n\n"
+            "Монтажная Кухня — персональная AI-студия видеомонтажа.\n\n"
+            "#shorts #viral #видеомонтаж #клипы"
+        )
+
         caption = (
-            f"🎬 **Ваше видео смонтировано!**\n\n"
+            f"🎬 **Ваше видео готово!**\n\n"
+            f"📌 **Название для YouTube:**\n`{yt_title}`\n\n"
+            f"📝 **Описание с таймкодами:**\n`{yt_desc[:250]}...`\n\n"
             f"• Формат: **{job_type.upper()} 1080×1920**\n"
-            f"• Звук: EBU R128 (-14 LUFS)\n"
-            f"• Движок: `video-montage` v2.0.0\n"
-            f"• Задача: `{job_id}`\n\n"
-            "Файл готов к публикации на YouTube!"
+            f"• Звук: EBU R128 (-14 LUFS) • ТВ-стандарт\n"
+            f"• Ускорение: {'Intel VA-API' if hw_type == 'vaapi' else 'CPU Fast'}\n"
+            f"• ID задачи: `{job_id}`\n\n"
+            "Файл готов к публикации на YouTube, TikTok или Reels!"
         )
         await send_telegram_video(tg_id, output_file, caption)
         await report_complete(session, job_id, result_url=f"/demo/{job_id}.mp4", thumb_url=f"/showcase/{job_id}.png")

@@ -1,11 +1,12 @@
 'use client';
 
-// Общая зона загрузки: файл ИЛИ ссылка (YouTube / прямая) — как в ТЗ бота.
-// Стиль: iOS Segmented Control + стеклянная drop-зона.
+// Общая зона загрузки: файл ИЛИ ссылка на любую платформу (P0: yt-dlp 1000+ сайтов).
+// Стиль: iOS Segmented Control + стеклянная drop-зона + чип распознанной платформы.
 
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { FileVideo, Link2, UploadCloud, X } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
+import { detectSource } from '@/lib/platforms';
 import { Input } from '@/components/ui/input';
 import { Segmented } from '@/components/ui/segmented';
 
@@ -30,20 +31,16 @@ export function SourcePicker({
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
 
-  const MODE_OPTIONS: { value: SourceMode; label: React.ReactNode }[] = [
+  // P0-мультиплатформенность: одна кнопка «Ссылка» покрывает YouTube, TikTok,
+  // Instagram и 1000+ сайтов yt-dlp — выбор «YouTube / прямая ссылка» больше не нужен.
+  const segValue = mode === 'upload' ? 'upload' : 'link';
+
+  const MODE_OPTIONS: { value: 'upload' | 'link'; label: React.ReactNode }[] = [
     {
       value: 'upload',
       label: (
         <>
           <UploadCloud className="h-3.5 w-3.5" /> {t.source.file}
-        </>
-      ),
-    },
-    {
-      value: 'youtube',
-      label: (
-        <>
-          <Link2 className="h-3.5 w-3.5" /> YouTube
         </>
       ),
     },
@@ -57,11 +54,13 @@ export function SourcePicker({
     },
   ];
 
+  const detected = useMemo(() => (mode !== 'upload' && url.trim() ? detectSource(url) : null), [mode, url]);
+
   return (
     <div className="space-y-3">
       <Segmented
-        value={mode}
-        onValueChange={onModeChange}
+        value={segValue}
+        onValueChange={(v) => onModeChange(v === 'upload' ? 'upload' : 'youtube')}
         options={MODE_OPTIONS}
         ariaLabel={t.source.aria}
       />
@@ -116,13 +115,31 @@ export function SourcePicker({
           </div>
         )
       ) : (
-        <Input
-          value={url}
-          onChange={(e) => onUrlChange(e.target.value)}
-          placeholder={mode === 'youtube' ? 'https://youtube.com/watch?v=…' : t.source.urlPlaceholder}
-          inputMode="url"
-          aria-label={t.source.urlAria}
-        />
+        <div className="space-y-2">
+          <Input
+            value={url}
+            onChange={(e) => onUrlChange(e.target.value)}
+            placeholder={t.source.urlPlaceholder}
+            inputMode="url"
+            aria-label={t.source.urlAria}
+          />
+          {/* Чип распознанной платформы — мгновенная обратная связь */}
+          {url.trim() && (
+            <p
+              className={`flex items-center gap-1.5 text-[11.5px] font-medium ${
+                detected ? 'text-[#30d158]' : 'text-muted-foreground'
+              }`}
+              role="status"
+            >
+              <span aria-hidden>{detected?.emoji ?? '🔗'}</span>
+              {detected
+                ? t.source.detected(detected.label)
+                : url.trim().startsWith('http')
+                  ? t.source.anySite
+                  : ''}
+            </p>
+          )}
+        </div>
       )}
 
       <input

@@ -4,7 +4,7 @@
 // Дизайн: inset grouped секции iOS + System Blue CTA + человеческая микрокопия «для чайников».
 
 import { useState } from 'react';
-import { Loader2, Type, Wand2 } from 'lucide-react';
+import { Loader2, Scissors, Sparkles, Type } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { api, fmtDuration } from '@/lib/client-api';
 import { hapticSuccess, hapticTap } from '@/lib/telegram-client';
@@ -236,6 +236,14 @@ export function ShortsTab({ user, onCreated }: { user: User; onCreated: () => vo
   const langLabel = (key: (typeof LANGS)[number]['key']) => t.shorts[key];
   const subLabel = (key: (typeof SUBS)[number]['key']) => t.shorts[key];
 
+  // ── Улучшения монтажа (P1–P3): вырезка пауз · SFX · музыка · дубляж ──
+  const ENHANCEMENTS = [
+    { key: 'remove_silence', label: t.shorts.optSilence, desc: t.shorts.optSilenceDesc },
+    { key: 'sfx', label: t.shorts.optSfx, desc: t.shorts.optSfxDesc },
+    { key: 'music', label: t.shorts.optMusic, desc: t.shorts.optMusicDesc },
+    { key: 'dub', label: t.shorts.optDub, desc: t.shorts.optDubDesc },
+  ] as const;
+
   return (
     <div className="md:grid md:grid-cols-[minmax(0,1fr)_360px] md:items-start md:gap-7 lg:grid-cols-[minmax(0,1fr)_420px]">
       <div className="space-y-6 pb-6">
@@ -398,6 +406,40 @@ export function ShortsTab({ user, onCreated }: { user: User; onCreated: () => vo
         </Card>
       </section>
 
+      {/* Улучшения монтажа — тумблеры в стиле iOS Settings */}
+      <section className="space-y-2" aria-label={t.shorts.groupEnhance}>
+        <GroupLabel>{t.shorts.groupEnhance}</GroupLabel>
+        <Card className="gap-0 py-2">
+          <CardContent className="space-y-0 px-3">
+            {ENHANCEMENTS.map(({ key, label, desc }) => (
+              <label
+                key={key}
+                className="flex cursor-pointer items-center justify-between gap-3 border-b border-hairline px-1.5 py-3 last:border-b-0"
+              >
+                <span className="min-w-0 text-[13px] font-medium leading-snug">
+                  {label}
+                  <span className="mt-0.5 block text-[11px] font-normal leading-snug text-muted-foreground">
+                    {desc}
+                  </span>
+                </span>
+                <Switch
+                  checked={params[key]}
+                  onCheckedChange={(v) => {
+                    hapticTap();
+                    set(key, v);
+                  }}
+                  aria-label={label}
+                />
+              </label>
+            ))}
+            <p className="flex items-start gap-1.5 px-1.5 pt-2 text-[10.5px] leading-relaxed text-muted-foreground/80">
+              <Scissors className="mt-0.5 h-3 w-3 shrink-0 text-primary" />
+              {t.shorts.progressNote}
+            </p>
+          </CardContent>
+        </Card>
+      </section>
+
       {/* Обложка */}
       <section className="space-y-2" aria-label={t.shorts.groupCover}>
         <GroupLabel>{t.shorts.groupCover}</GroupLabel>
@@ -489,7 +531,7 @@ export function ShortsTab({ user, onCreated }: { user: User; onCreated: () => vo
           </p>
 
           <p className="flex items-start gap-1.5 text-[11px] leading-relaxed text-muted-foreground">
-            <Wand2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+            <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
             {t.shorts.progressNote}
           </p>
         </div>

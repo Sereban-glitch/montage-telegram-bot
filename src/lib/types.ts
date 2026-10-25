@@ -67,6 +67,12 @@ export interface HookCandidate {
   score: number; // Virality Score 60..99
   raw?: number;
   breakdown?: { hook: number; completeness: number; emotion: number; retention: number };
+  /** Превью-кадр фрагмента 9:16 (P0: кадры в хук-карточках, как Opus Clip) */
+  thumb?: string;
+  /** 3 варианта названия A/B/C — клик выбирает титул ролика (P2) */
+  titles?: string[];
+  /** 10-секундное превью-видео фрагмента (P1) */
+  previewUrl?: string;
 }
 
 // YouTube-пакет к готовому ролику (в params.youtube_meta)
@@ -133,6 +139,11 @@ export interface ShortsParams {
   subtitle_lang: string; // ru | uk | en | off
   bilingual: boolean;
   cover_frame: number; // 0..100 — позиция кадра обложки, %
+  // ── Улучшения монтажа (P1–P3, передаются в params → воркер) ──
+  remove_silence: boolean; // ✂️ вырезка пауз silencedetect -38 dB / 450 мс
+  sfx: boolean; // 🥁 лёгкие SFX-акценты на склейках (процедурные, CC0)
+  music: boolean; // 🎵 фоновая музыка с автоприглушением (sidechain)
+  dub: boolean; // 🗣 авто-дубляж RU⇄UA (edge-tts + LLM-перевод)
 }
 
 export interface LongParams {
@@ -152,6 +163,10 @@ export const DEFAULT_SHORTS: ShortsParams = {
   subtitle_lang: 'ru',
   bilingual: true,
   cover_frame: 35,
+  remove_silence: true,
+  sfx: false,
+  music: false,
+  dub: false,
 };
 
 export const DEFAULT_LONG: LongParams = {
