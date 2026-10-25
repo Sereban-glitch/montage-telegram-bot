@@ -11,6 +11,7 @@
 
 import { useMemo, useState } from 'react';
 import {
+  ClipboardCopy,
   Clock,
   ExternalLink,
   Eye,
@@ -25,8 +26,9 @@ import {
   Zap,
 } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
+import { copyText } from '@/lib/clipboard';
 import { fmtDuration, fmtViews } from '@/lib/client-api';
-import { hapticTap } from '@/lib/telegram-client';
+import { hapticSuccess, hapticTap } from '@/lib/telegram-client';
 import { useI18n } from '@/lib/i18n';
 import type { ShowcaseItem } from '@/lib/types';
 import { Button } from '@/components/ui/button';
@@ -64,6 +66,12 @@ const FALLBACK_ITEMS: ShowcaseItem[] = [
     views: 15900,
     featured: true,
     sort: 1,
+    youtubeMeta: {
+      title: 'КСУ: карантинні обмеження прав незаконні ⚖️',
+      description:
+        'Рішення Конституційного Суду України від 29.09.2026: обмеження прав під час карантину визнано таким, що не відповідає Конституції.\n\nСергій Велічко · короткий розбір за 98 секунд.\n\nСмонтовано автоматично «Монтажною Кухнею» — субтитри, обкладинка, соковитий ТВ-звук.',
+      tags: ['КСУ', 'конституційний суд', 'права людини', 'карантин', 'право', 'shorts', 'україна'],
+    },
   },
   {
     id: 'sc_makulatura',
@@ -76,6 +84,12 @@ const FALLBACK_ITEMS: ShowcaseItem[] = [
     views: 12400,
     featured: true,
     sort: 2,
+    youtubeMeta: {
+      title: 'Суддя відмовилась приймати макулатуру прокурора! 📋',
+      description:
+        'Суд за ст. 114-1 КК України, Запоріжжя: прокурор приніс «макулатуру», а суддя відмовилась її приймати. Розбір за 49 секунд.\n\nСмонтовано автоматично «Монтажною Кухнею».',
+      tags: ['суд', 'прокурор', '114-1', 'запоріжжя', 'адвокат', 'shorts', 'право'],
+    },
   },
   {
     id: 'sc_dates',
@@ -148,12 +162,37 @@ const FALLBACK_ITEMS: ShowcaseItem[] = [
     views: 22700,
     featured: true,
     sort: 8,
+    youtubeMeta: {
+      title: 'Повне засідання суду за ст. 114-1: клопотання та строки ⚖️',
+      description:
+        'Повний запис судового засідання 16:9 із главами та таймкодами:\n\n00:00 — Вступ\n00:42 — Клопотання захисту\n05:15 — Строки слідства\n12:30 — Виступ адвоката\n\nСмонтовано автоматично «Монтажною Кухнею»: субтитри, глави, обкладинка.',
+      tags: ['суд', '114-1', 'засідання', 'адвокат', 'строки слідства', 'право', 'україна'],
+    },
   },
 ];
 
 function extractYouTubeId(url: string): string | null {
   const match = url.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|shorts\/))([\w-]{11})/);
   return match ? match[1] : null;
+}
+
+// YouTube-пакет для авторов: название + описание + теги одним блоком.
+// Приоритет — серверный youtube_meta; иначе собираем из карточки (аудит UX).
+function buildYoutubePackage(item: ShowcaseItem, t: ReturnType<typeof useI18n>['t']): string {
+  const meta = item.youtubeMeta;
+  const title = meta?.title ?? item.title;
+  const description =
+    meta?.description ??
+    `${item.title}\n\n${item.subtitle ?? ''}\n\nСмонтовано автоматически «Монтажной Кухней» · субтитры, обложка, ТВ-звук.`;
+  const tags = meta?.tags ?? ['shorts', 'суд', 'право', 'украина', 'монтаж'];
+  return [
+    `📌 ${t.showcase.pkgTitle}: ${title}`,
+    '',
+    `📝 ${t.showcase.pkgDescription}:`,
+    description,
+    '',
+    `🏷 ${t.showcase.pkgTags}: ${tags.join(', ')}`,
+  ].join('\n');
 }
 
 export function ShowcaseTab({
@@ -231,15 +270,24 @@ export function ShowcaseTab({
       .catch(() => undefined);
   };
 
-  const handleCopyLink = (item: ShowcaseItem) => {
+  const handleCopyLink = async (item: ShowcaseItem) => {
     hapticTap();
     const url = item.videoUrl || window.location.href;
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(url).then(() => {
-        toast({ title: t.showcase.linkCopied, description: url });
-      });
+    const ok = await copyText(url);
+    if (ok) hapticSuccess();
+    toast({ title: t.showcase.linkCopied, description: url });
+  };
+
+  // ── YouTube-пакет в 1 клик: название + описание + теги (аудит UX для авторов) ──
+  const handleCopyPackage = async (item: ShowcaseItem) => {
+    hapticTap();
+    const pkg = buildYoutubePackage(item, t);
+    const ok = await copyText(pkg);
+    if (ok) {
+      hapticSuccess();
+      toast({ title: t.showcase.packageCopied, description: t.showcase.packageCopiedDesc });
     } else {
-      toast({ title: t.showcase.linkCopied, description: url });
+      toast({ title: t.showcase.emptyTitle, description: pkg.slice(0, 80) });
     }
   };
 
@@ -733,6 +781,17 @@ export function ShowcaseTab({
                     {t.showcase.share}
                   </Button>
                 </div>
+
+                {/* YouTube-пакет для авторов: название + описание + теги в 1 клик */}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleCopyPackage(open)}
+                  className="h-10 w-full gap-1.5 rounded-xl border-primary/30 text-[12px] font-semibold text-primary hover:bg-primary/10"
+                >
+                  <ClipboardCopy className="h-3.5 w-3.5" />
+                  {t.showcase.copyPackageFull}
+                </Button>
               </div>
             </>
           )}

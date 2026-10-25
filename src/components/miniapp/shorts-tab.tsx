@@ -3,7 +3,7 @@
 // Вкладка «Монтаж Shorts»: пресеты «В 1 клик», загрузка, титулы, субтитры, кадр обложки.
 // Дизайн: inset grouped секции iOS + System Blue CTA + человеческая микрокопия «для чайников».
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Loader2, Scissors, Sparkles, Type } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { api, fmtDuration } from '@/lib/client-api';
@@ -53,19 +53,51 @@ function GroupLabel({ children }: { children: React.ReactNode }) {
 
 // Живой предпросмотр кадра обложки 1080×1920: титул, плашка-лейбл,
 // пример субтитров с учётом двуязычного режима и пилюля.
+// Аудит UX (CapCut): при загруженном файле кадр скраббится из настоящего видео —
+// ползунок двигает currentTime <video>, кадр меняется как в плеере.
 function CoverPreview({
   params,
   size,
   className,
+  scrubSrc,
+  onMeta,
 }: {
   params: ShortsParams;
   size: 'sm' | 'lg';
   className?: string;
+  /** objectURL загруженного файла — включает живой скраббинг кадра */
+  scrubSrc?: string | null;
+  /** сообщит фактическую длительность видео (для точного таймкода) */
+  onMeta?: (durationSec: number) => void;
 }) {
   const lg = size === 'lg';
   const subsOn = params.subtitle_lang !== 'off';
   const main = subsOn ? SUB_SAMPLE[params.subtitle_lang] : undefined;
   const secondary = params.bilingual && subsOn ? SUB_SAMPLE[params.speech_lang] : undefined;
+
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [liveReady, setLiveReady] = useState(false);
+
+  // Метаданные загружены → живой режим + реальная длительность
+  const handleLoaded = () => {
+    const v = videoRef.current;
+    if (v && Number.isFinite(v.duration) && v.duration > 0) {
+      setLiveReady(true);
+      onMeta?.(v.duration);
+    }
+  };
+
+  // Живой скраббинг: движение ползунка → seek видео на соответствующий момент
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v || !liveReady || !scrubSrc) return;
+    const t = (params.cover_frame / 100) * (v.duration || 0);
+    try {
+      v.currentTime = t;
+    } catch {
+      /* seek может быть недоступен — останемся на текущем кадре */
+    }
+  }, [params.cover_frame, liveReady, scrubSrc]);
 
   return (
     <div
@@ -73,16 +105,43 @@ function CoverPreview({
         className ?? ''
       }`}
     >
+      {/* Фон: живое видео (при файле) либо статичный пример */}
+      {scrubSrc ? (
+        <video
+          ref={videoRef}
+          src={scrubSrc}
+          muted
+          playsInline
+          preload="auto"
+          onLoadedMetadata={handleLoaded}
+          onError={() => setLiveReady(false)}
+          className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-300 ${
+            liveReady ? 'opacity-100' : 'opacity-0'
+          }`}
+          aria-label={lg ? 'Живой кадр из вашего видео' : undefined}
+        />
+      ) : null}
+      {/* Статичный пример — пока видео не готово или режима ссылки */}
       <div
-        className="absolute inset-0 bg-cover bg-no-repeat"
+        className={`absolute inset-0 bg-cover bg-no-repeat transition-opacity duration-300 ${
+          scrubSrc && liveReady ? 'opacity-0' : 'opacity-100'
+        }`}
         style={{
           backgroundImage: "url('/showcase/short-court.png')",
           backgroundPosition: `50% ${params.cover_frame}%`,
           backgroundSize: '160% auto',
         }}
         role="img"
-        aria-label="Предпросмотр кадра обложки"
+        aria-label={lg ? 'Пример кадра обложки' : undefined}
       />
+
+      {/* LIVE-бейдж живого скраббинга */}
+      {liveReady && (
+        <span className="absolute right-2.5 top-2.5 z-10 inline-flex items-center gap-1 rounded-full bg-[#ff3b30]/90 px-2 py-0.5 text-[8.5px] font-bold uppercase tracking-wider text-white shadow-sm backdrop-blur-sm">
+          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
+          LIVE
+        </span>
+      )}
       <div
         className={`absolute inset-x-0 top-0 bg-gradient-to-b from-black/75 via-black/35 to-transparent ${
           lg ? 'p-4 pb-8' : 'p-3 pb-6'
@@ -142,11 +201,29 @@ export function ShortsTab({ user, onCreated }: { user: User; onCreated: () => vo
   const [params, setParams] = useState<ShortsParams>({ ...DEFAULT_SHORTS });
   const [clipLength, setClipLength] = useState(60); // демо-длительность для таймкодов обложки
   const [submitting, setSubmitting] = useState(false);
+  // Живой скраббинг обложки: objectURL загруженного файла (аудит UX, как CapCut)
+  const [scrubUrl, setScrubUrl] = useState<string | null>(null);
+  const [videoDuration, setVideoDuration] = useState<number | null>(null);
+
+  // objectURL живёт пока жив файл; снимаем с регистрации при смене/размонтировании
+  useEffect(() => {
+    if (!file) {
+      setScrubUrl(null);
+      setVideoDuration(null);
+      return;
+    }
+    const u = URL.createObjectURL(file);
+    setScrubUrl(u);
+    return () => URL.revokeObjectURL(u);
+  }, [file]);
 
   const set = <K extends keyof ShortsParams>(k: K, v: ShortsParams[K]) =>
     setParams((p) => ({ ...p, [k]: v }));
 
-  const coverTimecode = fmtDuration(Math.max(1, Math.round((clipLength * params.cover_frame) / 100)));
+  // Таймкод кадра: из реальной длительности при живом скраббинге, иначе из поля длины клипа
+  const effectiveLength = videoDuration ?? clipLength;
+  const coverTimecode = fmtDuration(Math.max(1, Math.round((effectiveLength * params.cover_frame) / 100)));
+  const isLiveScrub = Boolean(scrubUrl && videoDuration);
 
   // ── Быстрые пресеты стиля «В 1 клик»: заполняют все поля автоматически ──
   const applyPreset = (key: PresetKey) => {
@@ -190,6 +267,7 @@ export function ShortsTab({ user, onCreated }: { user: User; onCreated: () => vo
     if (key === 'viral' || key === 'law') setClipLength(45);
     else setClipLength(60);
     setParams(preset);
+    hapticSuccess();
     toast({ title: `✨ ${t.shorts.presetAppliedTitle}`, description: t.shorts.presetAppliedDesc });
   };
 
@@ -445,39 +523,62 @@ export function ShortsTab({ user, onCreated }: { user: User; onCreated: () => vo
         <GroupLabel>{t.shorts.groupCover}</GroupLabel>
         <Card className="gap-0 py-4">
           <CardContent className="space-y-4 px-4">
-            <CoverPreview params={params} size="sm" className="mx-auto w-[46%] md:hidden" />
+            <CoverPreview
+              params={params}
+              size="sm"
+              className="mx-auto w-[46%] md:hidden"
+              scrubSrc={scrubUrl}
+              onMeta={(d) => setVideoDuration(Math.round(d))}
+            />
 
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
-                <Label className="text-[12px] text-muted-foreground">{t.shorts.coverPosition}</Label>
-                <span className="rounded-full bg-primary/12 px-2.5 py-0.5 font-mono text-[11px] font-semibold tabular-nums text-primary dark:bg-primary/20">
-                  {coverTimecode}
+                <Label className="text-[12px] text-muted-foreground">
+                  {isLiveScrub ? t.shorts.scrubLive : t.shorts.coverPosition}
+                </Label>
+                <span className="inline-flex items-center gap-2">
+                  {isLiveScrub && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-[#ff3b30]/12 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-[#ff3b30] dark:bg-[#ff3b30]/25">
+                      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#ff3b30]" />
+                      {t.shorts.scrubBadge}
+                    </span>
+                  )}
+                  <span className="rounded-full bg-primary/12 px-2.5 py-0.5 font-mono text-[11px] font-semibold tabular-nums text-primary dark:bg-primary/20">
+                    {coverTimecode}
+                  </span>
                 </span>
               </div>
               <Slider
                 value={[params.cover_frame]}
                 onValueChange={([v]) => set('cover_frame', v)}
+                onValueCommit={() => hapticTap()}
                 min={0}
                 max={100}
                 step={1}
                 aria-label={t.shorts.coverPosition}
               />
+              <p className="text-[10.5px] leading-snug text-muted-foreground">
+                {isLiveScrub ? t.shorts.scrubLiveHint : t.shorts.scrubFallbackHint}
+              </p>
             </div>
 
-            <div className="flex items-center gap-2.5 rounded-2xl bg-black/[0.025] px-3.5 py-2.5 dark:bg-white/[0.04]">
-              <Input
-                type="number"
-                min={5}
-                max={3600}
-                value={clipLength}
-                onChange={(e) => setClipLength(Number(e.target.value) || 0)}
-                className="h-9 w-24 text-[13px] tabular-nums"
-                aria-label={t.shorts.clipLengthLabel}
-              />
-              <span className="text-[11px] leading-snug text-muted-foreground">
-                {t.shorts.clipLengthHint}
-              </span>
-            </div>
+            {/* Поле длины клипа — только когда нет живой длительности из видео */}
+            {!isLiveScrub && (
+              <div className="flex items-center gap-2.5 rounded-2xl bg-black/[0.025] px-3.5 py-2.5 dark:bg-white/[0.04]">
+                <Input
+                  type="number"
+                  min={5}
+                  max={3600}
+                  value={clipLength}
+                  onChange={(e) => setClipLength(Number(e.target.value) || 0)}
+                  className="h-9 w-24 text-[13px] tabular-nums"
+                  aria-label={t.shorts.clipLengthLabel}
+                />
+                <span className="text-[11px] leading-snug text-muted-foreground">
+                  {t.shorts.clipLengthHint}
+                </span>
+              </div>
+            )}
           </CardContent>
         </Card>
       </section>
@@ -509,7 +610,13 @@ export function ShortsTab({ user, onCreated }: { user: User; onCreated: () => vo
             </span>
           </div>
 
-          <CoverPreview params={params} size="lg" className="mx-auto w-full max-w-[300px] xl:max-w-[340px]" />
+          <CoverPreview
+            params={params}
+            size="lg"
+            className="mx-auto w-full max-w-[300px] xl:max-w-[340px]"
+            scrubSrc={scrubUrl}
+            onMeta={(d) => setVideoDuration(Math.round(d))}
+          />
 
           {/* Мини-трек позиции кадра */}
           <div

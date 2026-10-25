@@ -7,10 +7,11 @@
 // «Смонтировать этот фрагмент в 1 клик» (hook_render, priority=10).
 
 import { useMemo, useState } from 'react';
-import { Clock3, Gauge, Loader2, Play, Target, Zap } from 'lucide-react';
+import { Check, Clock3, Copy, Gauge, Loader2, Minus, Play, Plus, Target, Zap } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { api } from '@/lib/client-api';
-import { hapticTap } from '@/lib/telegram-client';
+import { copyText } from '@/lib/clipboard';
+import { hapticSuccess, hapticTap } from '@/lib/telegram-client';
 import { useI18n } from '@/lib/i18n';
 import { detectSource } from '@/lib/platforms';
 import type { HookCandidate, Job, User } from '@/lib/types';
@@ -45,12 +46,105 @@ function tc(sec: number): string {
 const MEDAL = { 1: '#FFD60A', 2: '#C7C7CC', 3: '#FF9F0A' } as Record<number, string>;
 const VARIANT_TAG = ['A', 'B', 'C'] as const;
 
+// Тонкая подстройка границ фрагмента (аудит UX ±2–3 с, как Trim/Extend в Opus Clip):
+// сдвиги старта/конца хранятся локально, передаются в hook_render.
+const NUDGE_STEP = 2;
+const NUDGE_MAX = 10; // суммарный сдвиг каждой границы
+const MIN_LEN = 15; // минимальная длительность после подстройки
+
+interface Nudge {
+  ds: number;
+  de: number;
+}
+
+function clampNudge(cand: HookCandidate, cur: Nudge, field: 'ds' | 'de', delta: number): Nudge {
+  let ds = cur.ds;
+  let de = cur.de;
+  if (field === 'ds') ds += delta;
+  else de += delta;
+  ds = Math.max(-NUDGE_MAX, Math.min(NUDGE_MAX, ds));
+  de = Math.max(-NUDGE_MAX, Math.min(NUDGE_MAX, de));
+  // Старт не раньше нуля; длительность в разумных рамках
+  if (cand.start + ds < 0) ds = -cand.start;
+  const len = cand.end - cand.start + de - ds;
+  if (len < MIN_LEN) {
+    if (field === 'ds') ds = cand.end - cand.start + de - MIN_LEN;
+    else de = MIN_LEN - (cand.end - cand.start) + ds;
+  }
+  return { ds, de };
+}
+
+// Кнопка «±2 с» — маленькая капсула с иконкой
+function NudgeBtn({
+  label,
+  delta,
+  onClick,
+  disabled,
+}: {
+  label: string;
+  delta: number;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={label}
+      className="tap-none inline-flex h-7 items-center gap-0.5 rounded-lg bg-black/[0.05] px-2 text-[11px] font-semibold tabular-nums text-foreground transition-all duration-150 hover:bg-primary/15 active:scale-90 disabled:opacity-30 dark:bg-white/[0.08] dark:hover:bg-primary/25"
+    >
+      {delta > 0 ? <Plus className="h-3 w-3" /> : <Minus className="h-3 w-3" />}
+      {Math.abs(delta)}с
+    </button>
+  );
+}
+
+// Микро-шаги ожидания анализа (NN/g: perceived progress вместо голого спиннера)
+function AnalysisSteps({ progress, queued }: { progress: number; queued: boolean }) {
+  const { t } = useI18n();
+  const steps = [t.hooks.stepAudio, t.hooks.stepTranscribe, t.hooks.stepScore];
+  // Грубая оценка текущего шага по прогрессу; в очереди — ещё нулевой
+  const cur = queued ? -1 : progress < 30 ? 0 : progress < 75 ? 1 : 2;
+  return (
+    <ol className="mt-3 space-y-1.5" aria-label={t.hooks.analysisLabel}>
+      {steps.map((s, i) => {
+        const done = i < cur;
+        const active = i === cur;
+        return (
+          <li
+            key={i}
+            className={`flex items-center gap-2 text-[11.5px] leading-snug transition-all duration-300 ${
+              done ? 'text-muted-foreground' : active ? 'font-semibold text-foreground' : 'text-muted-foreground/55'
+            }`}
+          >
+            <span
+              className={`flex h-4.5 w-4.5 shrink-0 items-center justify-center rounded-full border transition-all duration-300 ${
+                done
+                  ? 'border-[#30d158]/50 bg-[#30d158]/15 text-[#30d158]'
+                  : active
+                    ? 'border-primary/60 bg-primary/10 text-primary'
+                    : 'border-hairline text-transparent'
+              }`}
+            >
+              {done ? <Check className="h-3 w-3" strokeWidth={3} /> : active ? <Loader2 className="h-2.5 w-2.5 animate-spin" /> : null}
+            </span>
+            <span className={done ? 'line-through decoration-muted-foreground/40' : undefined}>{s}</span>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
 export function HooksTab({ user, jobs }: { user: User; jobs: Job[] }) {
   const { t } = useI18n();
   const [url, setUrl] = useState('');
   const [creating, setCreating] = useState(false);
   // Выбранный вариант названия (A/B/C) по каждому кандидату
   const [variantPick, setVariantPick] = useState<Record<number, number>>({});
+  // Подстройка границ фрагмента (±2 с) по каждому кандидату
+  const [nudges, setNudges] = useState<Record<number, Nudge>>({});
   // Диалог 10-сек превью
   const [previewCand, setPreviewCand] = useState<HookCandidate | null>(null);
 
@@ -115,12 +209,40 @@ export function HooksTab({ user, jobs }: { user: User; jobs: Job[] }) {
     toast({ title: t.hooks.titleVariants, description: t.hooks.variantChosen(v) });
   };
 
+  // ── Тонкая подстройка границ ±2 с ──
+  const nudge = (cand: HookCandidate, field: 'ds' | 'de', delta: number) => {
+    hapticTap();
+    setNudges((p) => {
+      const next = clampNudge(cand, p[cand.rank] ?? { ds: 0, de: 0 }, field, delta);
+      return { ...p, [cand.rank]: next };
+    });
+  };
+
+  const adjusted = (cand: HookCandidate): { start: number; end: number; n: Nudge } => {
+    const n = nudges[cand.rank] ?? { ds: 0, de: 0 };
+    return { start: Math.max(0, cand.start + n.ds), end: Math.max(0, cand.end + n.de), n };
+  };
+
+  // ── Копирование цитаты в 1 клик ──
+  const copyQuote = async (cand: HookCandidate) => {
+    hapticTap();
+    const ok = await copyText(cand.quote);
+    if (ok) {
+      hapticSuccess();
+      toast({ title: t.hooks.quoteCopied, description: t.hooks.quoteCopiedDesc });
+    } else {
+      toast({ title: t.hooks.failTitle, description: cand.quote });
+    }
+  };
+
   const renderCandidate = async (cand: HookCandidate) => {
     if (!lastAnalysis) return;
     hapticTap();
     // Титул — выбранный вариант A/B/C (по умолчанию A)
     const chosenTitle =
       cand.titles?.[variantPick[cand.rank] ?? 0] ?? cand.title;
+    // Границы с учётом подстройки ±2 с
+    const { start, end } = adjusted(cand);
     try {
       await api('/api/jobs', {
         method: 'POST',
@@ -132,8 +254,8 @@ export function HooksTab({ user, jobs }: { user: User; jobs: Job[] }) {
           params: {
             analysis_job_id: lastAnalysis.id,
             rank: cand.rank,
-            start_sec: cand.start,
-            end_sec: cand.end,
+            start_sec: start,
+            end_sec: end,
             title_line1: chosenTitle,
             title_line2: '',
             overlay_label: 'КСУ',
@@ -144,9 +266,10 @@ export function HooksTab({ user, jobs }: { user: User; jobs: Job[] }) {
           },
         }),
       });
+      hapticSuccess();
       toast({
         title: t.hooks.queuedTitle(cand.rank, cand.score),
-        description: t.hooks.queuedDesc(`${tc(cand.start)}–${tc(cand.end)}`),
+        description: t.hooks.queuedDesc(`${tc(start)}–${tc(end)}`),
       });
     } catch (e) {
       toast({ title: t.hooks.failRender, description: e instanceof Error ? e.message : undefined });
@@ -229,6 +352,10 @@ export function HooksTab({ user, jobs }: { user: User; jobs: Job[] }) {
             <span className="text-[15px] font-bold tabular-nums text-primary">{activeAnalysis.progress}%</span>
           </div>
           <Progress value={activeAnalysis.progress} className="h-2" />
+          <AnalysisSteps
+            progress={activeAnalysis.progress}
+            queued={activeAnalysis.status === 'queued'}
+          />
         </section>
       )}
 
@@ -244,6 +371,9 @@ export function HooksTab({ user, jobs }: { user: User; jobs: Job[] }) {
           {candidates.map((c) => {
             const picked = variantPick[c.rank] ?? 0;
             const variants = c.titles?.length ? c.titles : [c.title];
+            const { start, end, n } = adjusted(c);
+            const isAdjusted = n.ds !== 0 || n.de !== 0;
+            const dur = Math.round(end - start);
             return (
               <article
                 key={c.rank}
@@ -290,15 +420,36 @@ export function HooksTab({ user, jobs }: { user: User; jobs: Job[] }) {
                       </span>
                       <span className="inline-flex items-center gap-1 text-[11px] tabular-nums text-muted-foreground">
                         <Clock3 className="h-3 w-3" />
-                        {tc(c.start)} · {Math.round(c.duration)} {t.hooks.sec}
+                        {tc(start)} · {dur} {t.hooks.sec}
                       </span>
                       <span className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">
                         {t.hooks.virality} {c.score}
                       </span>
+                      {/* Микро-бейджи: топ-хук и факт подстройки */}
+                      {c.score >= 90 && (
+                        <span className="rounded-full bg-[#ff9f0a]/15 px-2 py-0.5 text-[9px] font-bold text-[#ff9f0a] dark:bg-[#ff9f0a]/25">
+                          {t.hooks.badgeTop}
+                        </span>
+                      )}
+                      {isAdjusted && (
+                        <span className="rounded-full bg-primary/12 px-2 py-0.5 text-[9px] font-semibold text-primary dark:bg-primary/25">
+                          {t.hooks.adjustedBadge}
+                        </span>
+                      )}
                     </div>
                     <p className="text-[14px] font-semibold leading-snug">{variants[picked] ?? c.title}</p>
-                    <p className="mt-1 line-clamp-2 text-[12.5px] italic leading-snug text-muted-foreground">
-                      «{c.quote}»
+                    {/* Цитата — клик по иконке копирует в 1 клик */}
+                    <p className="group/quote mt-1 flex items-start gap-1.5 text-[12.5px] italic leading-snug text-muted-foreground">
+                      <button
+                        type="button"
+                        onClick={() => copyQuote(c)}
+                        aria-label={t.hooks.copyQuote}
+                        title={t.hooks.copyQuote}
+                        className="tap-none mt-0.5 shrink-0 rounded-md p-0.5 text-muted-foreground/60 transition-all hover:bg-primary/12 hover:text-primary active:scale-90"
+                      >
+                        <Copy className="h-3.5 w-3.5" />
+                      </button>
+                      <span className="line-clamp-2">«{c.quote}»</span>
                     </p>
                     {c.breakdown && (
                       <div className="mt-2 grid grid-cols-4 gap-1.5" title={t.hooks.breakdownTitle}>
@@ -352,6 +503,56 @@ export function HooksTab({ user, jobs }: { user: User; jobs: Job[] }) {
                     <p className="mt-1 text-[10px] leading-snug text-muted-foreground/80">{t.hooks.variantHint}</p>
                   </div>
                 )}
+
+                {/* Тонкая подстройка границ ±2 с (аудит UX: как Trim/Extend в Opus Clip) */}
+                <div className="mt-2.5 rounded-2xl bg-black/[0.03] px-3 py-2.5 dark:bg-white/[0.05]">
+                  <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    {t.hooks.adjustLabel}
+                  </p>
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-[52px] text-[11px] font-medium text-muted-foreground">
+                        {t.hooks.startLabel}
+                      </span>
+                      <NudgeBtn
+                        label={`${t.hooks.startLabel} −${NUDGE_STEP}с`}
+                        delta={-NUDGE_STEP}
+                        onClick={() => nudge(c, 'ds', -NUDGE_STEP)}
+                        disabled={start <= 0}
+                      />
+                      <span className="w-[64px] text-center font-mono text-[11px] font-semibold tabular-nums text-foreground">
+                        {tc(start)}
+                      </span>
+                      <NudgeBtn
+                        label={`${t.hooks.startLabel} +${NUDGE_STEP}с`}
+                        delta={NUDGE_STEP}
+                        onClick={() => nudge(c, 'ds', NUDGE_STEP)}
+                      />
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-[52px] text-[11px] font-medium text-muted-foreground">
+                        {t.hooks.endLabel}
+                      </span>
+                      <NudgeBtn
+                        label={`${t.hooks.endLabel} −${NUDGE_STEP}с`}
+                        delta={-NUDGE_STEP}
+                        onClick={() => nudge(c, 'de', -NUDGE_STEP)}
+                        disabled={dur <= MIN_LEN}
+                      />
+                      <span className="w-[64px] text-center font-mono text-[11px] font-semibold tabular-nums text-foreground">
+                        {tc(end)}
+                      </span>
+                      <NudgeBtn
+                        label={`${t.hooks.endLabel} +${NUDGE_STEP}с`}
+                        delta={NUDGE_STEP}
+                        onClick={() => nudge(c, 'de', NUDGE_STEP)}
+                      />
+                    </div>
+                    <span className="ml-auto rounded-full bg-primary/12 px-2.5 py-0.5 text-[10px] font-semibold tabular-nums text-primary dark:bg-primary/25">
+                      {t.hooks.durationLabel} {dur} {t.hooks.sec}
+                    </span>
+                  </div>
+                </div>
 
                 <Button
                   size="lg"
@@ -428,7 +629,11 @@ export function HooksTab({ user, jobs }: { user: User; jobs: Job[] }) {
               />
               <div className="flex items-center justify-center gap-2 text-[11px] text-muted-foreground">
                 <Clock3 className="h-3 w-3" />
-                {tc(previewCand.start)}–{tc(previewCand.end)} · Virality {previewCand.score}%
+                {(() => {
+                  const a = adjusted(previewCand);
+                  return `${tc(a.start)}–${tc(a.end)}`;
+                })()}{' '}
+                · Virality {previewCand.score}%
               </div>
               <Button
                 size="lg"

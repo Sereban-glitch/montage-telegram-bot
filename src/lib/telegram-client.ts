@@ -22,6 +22,8 @@ export type TgWebApp = {
   ready: () => void;
   expand: () => void;
   close: () => void;
+  /** Открыть telegram-ссылку (t.me/…) внутри клиента без выхода из Mini App */
+  openTelegramLink?: (url: string) => void;
   disableVerticalSwipes?: () => void;
   requestFullscreen?: () => void;
   exitFullscreen?: () => void;

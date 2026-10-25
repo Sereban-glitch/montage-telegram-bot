@@ -99,6 +99,26 @@ const ru = {
     failAnalyze: 'Не удалось запустить анализ',
     failRender: 'Ошибка постановки в очередь',
     analysisLabel: 'Анализ видео',
+    // ── Тонкая подстройка таймкода (аудит UX: как Trim/Extend в Opus Clip) ──
+    adjustLabel: 'Подправить границы — если ИИ чуть промахнулся',
+    startLabel: 'Начало',
+    endLabel: 'Конец',
+    nudgeBtn: (d: number) => `${d > 0 ? '+' : '−'}${Math.abs(d)} с`,
+    nudgeDone: 'Границы подправлены',
+    nudgeDoneDesc: (tc: string) => `Фрагмент теперь ${tc}`,
+    adjustedBadge: '✂️ подправлено',
+    durationLabel: 'длит.',
+    // ── Копирование цитаты в 1 клик ──
+    copyQuote: 'Скопировать цитату',
+    quoteCopied: 'Цитата в буфере',
+    quoteCopiedDesc: 'Вставьте в описание или комментарий',
+    // ── Микро-бейджи карточек ──
+    badgeTop: '🔥 Топ-хук',
+    badgePreview: '10 сек',
+    // ── Микро-шаги ожидания анализа (NN/g: perceived progress) ──
+    stepAudio: 'Скачиваю только аудио',
+    stepTranscribe: 'Распознаю речь по секундам',
+    stepScore: 'Оцениваю фрагменты и вирусность',
   },
   shorts: {
     title: 'Монтаж Shorts',
@@ -171,6 +191,12 @@ const ru = {
     queuedDesc: 'Бот пришлёт статусы: нарезка → рендер → готово',
     failQueue: 'Не удалось поставить задачу',
     coverAria: 'Предпросмотр кадра обложки',
+    // ── Живой скраббинг кадра обложки (аудит UX: как выбор обложки в CapCut) ──
+    scrubLive: 'Живой выбор кадра',
+    scrubLiveHint: 'Ведите ползунок — кадр меняется как в плеере',
+    scrubFallback: 'Превью-кадр (пример)',
+    scrubFallbackHint: 'Прикрепите файл — кадры будут из вашего видео',
+    scrubBadge: 'LIVE',
   },
   long: {
     title: 'Монтаж Long',
@@ -237,6 +263,14 @@ const ru = {
     orderDoneTitle: 'Стиль перенесён в форму',
     orderDoneDesc: 'Форма заполнена, можете добавить видео или ссылку.',
     openPrototype: '📱 Открыть Open Design прототип',
+    // ── YouTube-пакет для авторов (аудит UX: пакетная загрузка без рутинного набора) ──
+    copyPackage: 'YouTube-пакет',
+    copyPackageFull: '📋 Скопировать YouTube-пакет',
+    packageCopied: '📋 Пакет в буфере',
+    packageCopiedDesc: 'Название, описание и теги — вставьте при загрузке на YouTube',
+    pkgTitle: 'Название',
+    pkgDescription: 'Описание',
+    pkgTags: 'Теги',
   },
   tasks: {
     title: 'Мои задачи',
@@ -369,6 +403,26 @@ const ua: Messages = {
     failAnalyze: 'Не вдалось запустити аналіз',
     failRender: 'Помилка постановки в чергу',
     analysisLabel: 'Аналіз відео',
+    // ── Тонке підлаштування таймкоду (аудит UX: як Trim/Extend в Opus Clip) ──
+    adjustLabel: 'Підправити межі — якщо ШІ трохи промахнувся',
+    startLabel: 'Початок',
+    endLabel: 'Кінець',
+    nudgeBtn: (d: number) => `${d > 0 ? '+' : '−'}${Math.abs(d)} с`,
+    nudgeDone: 'Межі підправлено',
+    nudgeDoneDesc: (tc: string) => `Фрагмент тепер ${tc}`,
+    adjustedBadge: '✂️ підправлено',
+    durationLabel: 'трив.',
+    // ── Копіювання цитати в 1 клік ──
+    copyQuote: 'Скопіювати цитату',
+    quoteCopied: 'Цитата в буфері',
+    quoteCopiedDesc: 'Вставте в опис або коментар',
+    // ── Мікро-бейджі карток ──
+    badgeTop: '🔥 Топ-хук',
+    badgePreview: '10 сек',
+    // ── Мікро-кроки очікування аналізу (NN/g: perceived progress) ──
+    stepAudio: 'Завантажую лише аудіо',
+    stepTranscribe: 'Розпізнаю мовлення по секундах',
+    stepScore: 'Оцінюю фрагменти й вірусність',
   },
   shorts: {
     title: 'Монтаж Shorts',
@@ -441,6 +495,12 @@ const ua: Messages = {
     queuedDesc: 'Бот надішле статуси: нарізка → рендер → готово',
     failQueue: 'Не вдалось поставити завдання',
     coverAria: 'Попередній перегляд кадру обкладинки',
+    // ── Живий скрабінг кадру обкладинки (аудит UX: як вибір обкладинки в CapCut) ──
+    scrubLive: 'Живий вибір кадру',
+    scrubLiveHint: 'Ведіть повзунок — кадр змінюється як у плеєрі',
+    scrubFallback: 'Превʼю-кадр (приклад)',
+    scrubFallbackHint: 'Прикріпіть файл — кадри будуть з вашого відео',
+    scrubBadge: 'LIVE',
   },
   long: {
     title: 'Монтаж Long',
@@ -506,8 +566,16 @@ const ua: Messages = {
     orderComment: 'Коментар або побажання',
     orderSend: 'Перейти до монтажу',
     orderDoneTitle: 'Стиль перенесено у форму',
-    orderDoneDesc: 'Форма заповнена, можете додати відео або посилання.',
+    orderDoneDesc: 'Форму заповнено, можете додати відео або посилання.',
     openPrototype: '📱 Відкрити Open Design прототип',
+    // ── YouTube-пакет для авторів (аудит UX: пакетне завантаження без рутини) ──
+    copyPackage: 'YouTube-пакет',
+    copyPackageFull: '📋 Скопіювати YouTube-пакет',
+    packageCopied: '📋 Пакет у буфері',
+    packageCopiedDesc: 'Назва, опис і теги — вставте при завантаженні на YouTube',
+    pkgTitle: 'Назва',
+    pkgDescription: 'Опис',
+    pkgTags: 'Теги',
   },
   tasks: {
     title: 'Мої завдання',

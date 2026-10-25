@@ -93,6 +93,8 @@ export interface ShowcaseItem {
   views: number;
   featured: boolean;
   sort: number;
+  /** Готовый пакет для YouTube (название/описание/теги) — копируется в 1 клик из модалки */
+  youtubeMeta?: YoutubeMeta | null;
 }
 
 export interface Channel {
