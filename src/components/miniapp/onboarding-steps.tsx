@@ -1,7 +1,9 @@
 'use client';
 
-// Закреплённый онбординг-блок «3 шага» для главных вкладок.
-// «Для чайников»: пользователь с первых секунд понимает, что делать.
+// Закреплённый онбординг-блок «3 шага» — ПЕРСОНАЛЬНЫЙ для каждой вкладки.
+// Отзыв владельца: одинаковые шаги «ИИ выберет 3 самых мощных момента» во всех
+// вкладках вводили в заблуждение (Shorts и Long НЕ выдают 3 ролика!).
+// Теперь у hooks / shorts / long свои честные шаги.
 // Можно свернуть (крестик) — выбор сохраняется в localStorage.
 
 import { useEffect, useSyncExternalStore } from 'react';
@@ -9,7 +11,15 @@ import { X } from 'lucide-react';
 import { hapticTap } from '@/lib/telegram-client';
 import { ONBOARDING_STORAGE_KEY, useI18n } from '@/lib/i18n';
 
-const STEP_ICONS = ['🔗', '🧠', '🎬'] as const;
+// Вкладки с онбордингом (Витрина/Задачи — без него)
+export type OnboardingTab = 'hooks' | 'shorts' | 'long';
+
+// Иконки шагов под каждый режим: ссылка → ИИ → результат
+const STEP_ICONS: Record<OnboardingTab, readonly [string, string, string]> = {
+  hooks: ['🔗', '🧠', '🎬'],
+  shorts: ['📂', '🎨', '📲'],
+  long: ['📂', '✂️', '📥'],
+};
 
 // ── Мини-стор флага «свернуто» ──────────────────────────────
 // React 19 / eslint: setState в теле эффекта запрещён — используем внешний стор.
@@ -60,7 +70,7 @@ function useOnboardingHidden(): boolean {
   );
 }
 
-export function OnboardingSteps() {
+export function OnboardingSteps({ tab }: { tab: OnboardingTab }) {
   const { t } = useI18n();
   const hidden = useOnboardingHidden();
 
@@ -71,11 +81,13 @@ export function OnboardingSteps() {
     dismissOnboarding();
   };
 
-  const steps = [t.onboarding.step1, t.onboarding.step2, t.onboarding.step3];
+  const ob = t.onboarding.tabs[tab];
+  const steps = ob.steps;
+  const icons = STEP_ICONS[tab];
 
   return (
     <section
-      aria-label={t.onboarding.title}
+      aria-label={ob.title}
       className="animate-fade-up relative overflow-hidden rounded-3xl border border-primary/20 bg-gradient-to-b from-primary/[0.08] to-primary/[0.03] p-4 shadow-soft dark:border-primary/30 dark:from-primary/[0.14] dark:to-primary/[0.06]"
     >
       <button
@@ -87,7 +99,7 @@ export function OnboardingSteps() {
         <X className="h-3.5 w-3.5" />
       </button>
       <p className="mb-2.5 pr-8 text-[11px] font-semibold uppercase tracking-[0.07em] text-primary">
-        {t.onboarding.title}
+        {ob.title}
       </p>
       <ol className="space-y-2.5">
         {steps.map((step, i) => (
@@ -97,7 +109,7 @@ export function OnboardingSteps() {
             </span>
             <span className="min-w-0 pt-0.5 text-[13px] leading-snug">
               <span aria-hidden className="mr-1">
-                {STEP_ICONS[i]}
+                {icons[i]}
               </span>
               {step}
             </span>

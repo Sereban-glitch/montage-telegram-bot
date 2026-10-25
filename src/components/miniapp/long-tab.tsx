@@ -82,8 +82,8 @@ export function LongTab({ user, onCreated }: { user: User; onCreated: () => void
 
   return (
     <div className="space-y-6 pb-6">
-      {/* Закреплённый онбординг «3 шага» */}
-      <OnboardingSteps />
+      {/* Закреплённый онбординг «3 шага» — персональный для Long */}
+      <OnboardingSteps tab="long" />
 
       {/* Заголовок экрана */}
       <div className="space-y-1 px-1">

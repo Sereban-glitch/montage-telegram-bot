@@ -47,6 +47,8 @@ class ShortParams:
     sfx: bool = False             # 🥁 лёгкие акценты на склейках
     music: bool = False           # 🎵 фон с sidechain-дакингом
     dub: bool = False             # 🗣 RU⇄UA через edge-tts + LLM
+    # 🎬 Целевая длительность готового ролика: ⚡short(60) / ⏱️standard(90) / 🎬deep(180)
+    target_duration: str = "short"
 
 
 @dataclass
@@ -111,6 +113,11 @@ class Workspace:
             "profile": self.profile,
             "subtitle_size": 50,
             "subtitle_max_width": 960,
+            # 📺 Subtitle Safe Zone (инсайт из разбора Игоря Зуевича): на 1080×1920
+            # нижние 180–220 px перекрыты кнопками лайков/комментариев справа и
+            # плашкой звука снизу — фиксируем отступ 200 px, титры всегда видны.
+            # Новые версии движка читают ключ; старые безопасно игнорируют.
+            "subtitle_margin_v": 200,
             "overlay": {
                 "label": self._short.overlay_label or "КСУ",
                 "title": [x for x in (self._short.title_line1, self._short.title_line2) if x],

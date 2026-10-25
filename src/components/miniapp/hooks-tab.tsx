@@ -7,7 +7,7 @@
 // «Смонтировать этот фрагмент в 1 клик» (hook_render, priority=10).
 
 import { useMemo, useState } from 'react';
-import { Check, Clock3, Copy, Gauge, Loader2, Minus, Play, Plus, Target, Zap } from 'lucide-react';
+import { Check, Clock3, Copy, Gauge, Loader2, Minus, Play, Plus, Sparkles, Target, Zap } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { api } from '@/lib/client-api';
 import { copyText } from '@/lib/clipboard';
@@ -16,6 +16,7 @@ import { useI18n } from '@/lib/i18n';
 import { detectSource } from '@/lib/platforms';
 import type { HookCandidate, Job, User } from '@/lib/types';
 import { OnboardingSteps } from '@/components/miniapp/onboarding-steps';
+import { DurationPicker, type TargetDuration } from '@/components/miniapp/duration-picker';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -141,12 +142,16 @@ export function HooksTab({ user, jobs }: { user: User; jobs: Job[] }) {
   const { t } = useI18n();
   const [url, setUrl] = useState('');
   const [creating, setCreating] = useState(false);
+  // Целевая длительность готовых Shorts: ⚡60 / ⏱️90 / 🎬180 сек (YouTube Shorts 2026)
+  const [duration, setDuration] = useState<TargetDuration>('short');
   // Выбранный вариант названия (A/B/C) по каждому кандидату
   const [variantPick, setVariantPick] = useState<Record<number, number>>({});
   // Подстройка границ фрагмента (±2 с) по каждому кандидату
   const [nudges, setNudges] = useState<Record<number, Nudge>>({});
   // Диалог 10-сек превью
   const [previewCand, setPreviewCand] = useState<HookCandidate | null>(null);
+  // Массовая постановка «Смонтировать ВСЕ» — идёт, чтобы не дублировать клики
+  const [mountingAll, setMountingAll] = useState(false);
 
   // Последний анализ: активный или завершённый (с кандидатами)
   const { activeAnalysis, lastAnalysis, candidates } = useMemo(() => {
@@ -187,7 +192,15 @@ export function HooksTab({ user, jobs }: { user: User; jobs: Job[] }) {
           sourceType: 'youtube',
           sourceUrl: clean,
           sourceName: src && src.kind === 'platform' ? `${src.label} видео` : 'Видео по ссылке',
-          params: { overlay_label: 'КСУ', pill_text: 'ЩО ЦЕ ЗМІНЮЄ?', subtitle_lang: 'uk', bilingual: false, cover_frame: 35 },
+          params: {
+            overlay_label: 'КСУ',
+            pill_text: 'ЩО ЦЕ ЗМІНЮЄ?',
+            subtitle_lang: 'uk',
+            bilingual: false,
+            cover_frame: 35,
+            // ⚡60 / ⏱️90 / 🎬180 сек — пресет доходит до hook_scorer на воркере
+            target_duration: duration,
+          },
         }),
       });
       setUrl('');
@@ -235,7 +248,7 @@ export function HooksTab({ user, jobs }: { user: User; jobs: Job[] }) {
     }
   };
 
-  const renderCandidate = async (cand: HookCandidate) => {
+  const renderCandidate = async (cand: HookCandidate, opts?: { silent?: boolean }) => {
     if (!lastAnalysis) return;
     hapticTap();
     // Титул — выбранный вариант A/B/C (по умолчанию A)
@@ -263,23 +276,43 @@ export function HooksTab({ user, jobs }: { user: User; jobs: Job[] }) {
             subtitle_lang: 'uk',
             bilingual: false,
             cover_frame: 35,
+            target_duration: duration,
           },
         }),
       });
       hapticSuccess();
-      toast({
-        title: t.hooks.queuedTitle(cand.rank, cand.score),
-        description: t.hooks.queuedDesc(`${tc(start)}–${tc(end)}`),
-      });
+      if (!opts?.silent) {
+        toast({
+          title: t.hooks.queuedTitle(cand.rank, cand.score),
+          description: t.hooks.queuedDesc(`${tc(start)}–${tc(end)}`),
+        });
+      }
     } catch (e) {
       toast({ title: t.hooks.failRender, description: e instanceof Error ? e.message : undefined });
     }
   };
 
+  // ── «Смонтировать ВСЕ N ролика в очередь» — владелец попросил делать это в 1 клик ──
+  const renderAllCandidates = async () => {
+    if (!lastAnalysis || mountingAll || candidates.length === 0) return;
+    hapticTap();
+    setMountingAll(true);
+    try {
+      // Последовательно: порядок в очереди FIFO = порядок карточек (лучший — первым)
+      for (const c of candidates) {
+        await renderCandidate(c, { silent: true });
+      }
+      hapticSuccess();
+      toast({ title: t.hooks.mountAllDoneTitle, description: t.hooks.mountAllDoneDesc });
+    } finally {
+      setMountingAll(false);
+    }
+  };
+
   return (
     <div className="space-y-5">
-      {/* Закреплённый онбординг «3 шага» — для чайников */}
-      <OnboardingSteps />
+      {/* Закреплённый онбординг «3 шага» — персональный для хуков */}
+      <OnboardingSteps tab="hooks" />
 
       {/* Large Title + подзаголовок */}
       <div className="flex items-start gap-3">
@@ -336,6 +369,9 @@ export function HooksTab({ user, jobs }: { user: User; jobs: Job[] }) {
         </div>
       </section>
 
+      {/* Селектор целевой длительности: ⚡60 / ⏱️90 / 🎬180 сек (YouTube Shorts 2026) */}
+      <DurationPicker value={duration} onChange={setDuration} label={t.dur.hooksLabel} />
+
       {/* Индикатор анализа */}
       {activeAnalysis && (
         <section className="animate-fade-up rounded-3xl border border-primary/25 bg-primary/[0.06] p-4 shadow-soft dark:bg-primary/[0.12]">
@@ -362,6 +398,22 @@ export function HooksTab({ user, jobs }: { user: User; jobs: Job[] }) {
       {/* Карточки кандидатов: превью-кадр 9:16 + Virality + варианты названия + превью-видео */}
       {candidates.length > 0 && (
         <section className="space-y-3">
+          {/* Бейдж «Найдено 3 отдельных ролика на выбор» + «Смонтировать ВСЕ» (отзыв владельца) */}
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-primary/25 bg-primary/[0.07] px-3.5 py-2.5 dark:bg-primary/[0.13]">
+            <p className="flex min-w-0 items-center gap-1.5 text-[12.5px] font-semibold text-primary">
+              <Sparkles className="h-4 w-4 shrink-0" aria-hidden />
+              {t.hooks.foundBadge(candidates.length)}
+            </p>
+            <Button
+              size="sm"
+              className="h-9 shrink-0 gap-1.5 rounded-xl px-3 text-[12px] font-semibold"
+              disabled={mountingAll}
+              onClick={renderAllCandidates}
+            >
+              {mountingAll ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
+              {t.hooks.mountAll(candidates.length)}
+            </Button>
+          </div>
           <div className="flex items-center justify-between px-1">
             <h3 className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">
               {t.hooks.bestMoments} {lastAnalysis ? `· ${lastAnalysis.sourceName ?? 'видео'}` : ''}

@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ChefHat, Film, Gauge, LogOut, Maximize, Minimize, ShieldCheck } from 'lucide-react';
+import { ChefHat, Film, Gauge, HelpCircle, LogOut, Maximize, Minimize, ShieldCheck } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { api } from '@/lib/client-api';
 import {
@@ -16,6 +16,7 @@ import { LANGS, LanguageProvider, useI18n, type Lang } from '@/lib/i18n';
 import type { Job, ShowcaseItem, User } from '@/lib/types';
 import { MiniApp } from '@/components/miniapp/mini-app';
 import { DynamicIsland } from '@/components/miniapp/dynamic-island';
+import { ModesExplainerModal } from '@/components/miniapp/modes-explainer-modal';
 import { AdminPanel } from '@/components/admin/admin-panel';
 import { Button } from '@/components/ui/button';
 
@@ -70,6 +71,8 @@ function AppRootInner() {
   const [showcase, setShowcase] = useState<ShowcaseItem[]>([]);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const bannerRef = useRef(false);
+  // ℹ️ Шпаргалка «Как работают 3 режима» — из любой вкладки (отзыв владельца о путанице)
+  const [modesOpen, setModesOpen] = useState(false);
 
   // ── Авторизация: Telegram initData либо демо-вход ──────────
   const authenticate = useCallback(async () => {
@@ -236,15 +239,17 @@ function AppRootInner() {
             <div className="aurora" />
           </div>
 
-          {/* Шапка iOS: стеклянная, липкая, с Dynamic Island */}
+          {/* Шапка iOS: стеклянная, липкая, с Dynamic Island.
+              pt-safe: на смартфонах в fullscreen кнопки шапки не перекрываются
+              системной шторкой и вырезом камеры (env(safe-area-inset-top)). */}
           <header className="sticky top-0 z-40">
-            <div className="glass-strong border-b hairline">
+            <div className="glass-strong border-b hairline pt-safe">
               {hasActiveJobs && (
                 <div className="px-3 pt-3">
                   <DynamicIsland jobs={jobs} onOpen={() => switchTab('tasks')} />
                 </div>
               )}
-              <div className="flex items-center gap-1.5 px-3 py-3 sm:gap-3 sm:px-4">
+              <div className="flex min-h-[64px] items-center gap-1.5 px-3 py-2.5 sm:gap-3 sm:px-4 sm:py-3">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[13px] bg-gradient-to-b from-[#3a9bff] to-[#0063e0] shadow-glow dark:from-[#0a84ff] dark:to-[#0058c8] dark:shadow-glow-dark">
                   <ChefHat className="h-5 w-5 text-white" />
                 </div>
@@ -277,6 +282,20 @@ function AppRootInner() {
                   onClick={handleToggleFullscreen}
                 >
                   {isFullscreen ? <Minimize className="h-4.5 w-4.5" /> : <Maximize className="h-4.5 w-4.5" />}
+                </Button>
+                {/* ℹ️ Шпаргалка «Как работают 3 режима» — рядом с языком, в любой момент */}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label={t.header.modesHint}
+                  title={t.header.modesHint}
+                  className="h-9 w-9 shrink-0 rounded-full bg-black/[0.04] text-muted-foreground hover:bg-primary/10 hover:text-primary dark:bg-white/[0.08] dark:hover:bg-white/[0.14]"
+                  onClick={() => {
+                    hapticTap();
+                    setModesOpen(true);
+                  }}
+                >
+                  <HelpCircle className="h-4.5 w-4.5" />
                 </Button>
                 <LangSwitcher />
                 {user.role === 'admin' && (
@@ -319,6 +338,9 @@ function AppRootInner() {
           </main>
         </div>
       </div>
+
+      {/* ℹ️ Шпаргалка: как работают 3 режима — вызывается из шапки */}
+      <ModesExplainerModal open={modesOpen} onOpenChange={setModesOpen} />
     </div>
   );
 }

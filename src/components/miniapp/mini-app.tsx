@@ -51,8 +51,12 @@ export function MiniApp({
 
   return (
     <>
-      {/* Desktop-навигация (Telegram Desktop / окно ≥ 768px): iOS Segmented Control */}
-      <nav className="hidden justify-center px-6 pb-1 pt-2 md:flex" aria-label={t.tabs.sectionsAria}>
+      {/* Desktop-навигация (Telegram Desktop / окно ≥ 768px): iOS Segmented Control.
+          Липкая под шапкой (top ≈ 64px + safe-area): вкладки не улетают при скролле. */}
+      <nav
+        className="hidden justify-center px-6 pb-1 pt-2 md:sticky md:top-[calc(64px+env(safe-area-inset-top))] md:z-30 md:flex md:bg-background/85 md:pb-2 md:backdrop-blur-lg"
+        aria-label={t.tabs.sectionsAria}
+      >
         <Segmented
           value={tab}
           onValueChange={onTabChange}
@@ -85,7 +89,7 @@ export function MiniApp({
         {tab === 'shorts' && <ShortsTab user={user} onCreated={onJobCreated} />}
         {tab === 'long' && <LongTab user={user} onCreated={onJobCreated} />}
         {tab === 'showcase' && <ShowcaseTab items={showcase} reload={reloadShowcase} onNavigate={onTabChange} />}
-        {tab === 'tasks' && <TasksTab jobs={jobs} />}
+        {tab === 'tasks' && <TasksTab jobs={jobs} onNavigate={onTabChange} />}
       </div>
 
       {/* Нижняя навигация iOS: парящее матовое стекло — только мобильные (< 768px) */}

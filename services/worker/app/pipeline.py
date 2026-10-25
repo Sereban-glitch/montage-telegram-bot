@@ -18,6 +18,7 @@ from .engine import LongParams, ShortParams, Segment, Workspace
 # B-roll, WhisperX-адаптер и дубляж — все модули graceful-degradation
 from . import broll as broll_mod
 from . import dub as dub_mod
+from . import hook_scorer  # 🎬 пресеты целевой длительности (target_duration)
 from . import hwaccel
 from . import music_duck
 from . import silence_cutter
@@ -150,9 +151,13 @@ def _whisper_segments(session, ws: Workspace, model: str, pmap: dict | None = No
 # Shorts: нарезка + субтитры
 # ----------------------------------------------------------------
 
-def build_short_captions(segments: list[Segment], max_chars: int = 42) -> tuple[list[list[float]], list[list]]:
-    """Динамичная нарезка 45–90 с: склеиваем речь в реплики ≤ max_chars,
-    выкидываем пустые паузы; edits — сквозные интервалы активных реплик."""
+def build_short_captions(segments: list[Segment], max_chars: int = 42,
+                         max_total: float = 90.0) -> tuple[list[list[float]], list[list]]:
+    """Динамичная нарезка под целевую длительность: склеиваем речь в реплики ≤ max_chars,
+    выкидываем пустые паузы; edits — сквозные интервалы активных реплик.
+
+    max_total — потолок итогового ролика в секундах (⚡60 / ⏱️90 / 🎬180 —
+    пресет target_duration из Mini App; YouTube Shorts до 3 минут с 15.10.2024)."""
     edits: list[list[float]] = []
     captions: list[list] = []
     phrase_start: float | None = None
@@ -179,11 +184,11 @@ def build_short_captions(segments: list[Segment], max_chars: int = 42) -> tuple[
         captions.append([round(phrase_start, 2), round(segments[-1].end, 2), phrase_text.strip()])
         edits.append([round(phrase_start, 2), round(segments[-1].end, 2)])
 
-    # Ограничиваем итог до ~90 секунд, берём начало (самое динамичное)
+    # Ограничиваем итог до целевой длительности, берём начало (самое динамичное)
     total, cut_at = 0.0, len(edits)
     for i, (s, e) in enumerate(edits):
         total += e - s
-        if total > 90:
+        if total > max_total:
             cut_at = max(1, i + 1)
             break
     return edits[:cut_at], captions[:cut_at]
@@ -193,7 +198,10 @@ def render_short(session, ws: Workspace, params: ShortParams) -> None:
     set_stage(session, ws.job_id, "cut")
     segments = json.loads(ws.transcript.read_text(encoding="utf-8"))
     seg_objs = [Segment(**s) for s in segments]
-    edits, captions = build_short_captions(seg_objs)
+    # 🎬 Целевая длительность готового ролика (⚡60 / ⏱️90 / 🎬180 сек) —
+    # пресет выбирается в Mini App и синхронен с hook_scorer.DURATION_PRESETS
+    _, max_total = hook_scorer.resolve_duration(getattr(params, "target_duration", None))
+    edits, captions = build_short_captions(seg_objs, max_total=max_total)
 
     # P1: реальная вырезка пауз внутри реплик (silencedetect -38 dB / 450 мс)
     if params.remove_silence:
@@ -476,6 +484,16 @@ def run_hook_analysis(session, job: Job) -> None:
     ws = Workspace.for_job(job.id)
     log_event(session, job.id, "Hook Finder: анализ вирусных фрагментов запущен")
 
+    # 🎬 Целевая длительность готовых Shorts из params (⚡60 / ⏱️90 / 🎬180 сек) —
+    # выбирается в Mini App; по умолчанию классические 35–60 с
+    job_params = parse_params(job.params)
+    target_duration = job_params.get("target_duration")
+    min_dur, max_dur = hook_scorer.resolve_duration(target_duration)
+    if target_duration:
+        log_event(session, job.id,
+                  f"Hook Finder: целевая длительность {target_duration} "
+                  f"({min_dur:.0f}–{max_dur:.0f} с)")
+
     # 0. P0: мультиплатформенность — yt-dlp умеет 1000+ сайтов (YouTube, TikTok,
     #    Instagram, VK, RuTube…), отдельная логика не нужна; аудио качаем как раньше
 
@@ -499,21 +517,25 @@ def run_hook_analysis(session, job: Job) -> None:
     # 2. Whisper: фразы с точными таймкодами
     segments = transcribe_map(session, ws, s.whisper_model_short, HOOK_ANALYSIS_PROGRESS)
 
-    # 3. AI Hook Scoring
+    # 3. AI Hook Scoring (пресет длительности перекрывает настройки по умолчанию)
     set_stage(session, job.id, "analyze", pmap=HOOK_ANALYSIS_PROGRESS)
     candidates = hook_scorer.find_hooks(
         [{"start": x.start, "end": x.end, "text": x.text} for x in segments],
-        min_dur=s.hook_min_dur, max_dur=s.hook_max_dur, top=s.hook_max_candidates,
+        min_dur=min_dur, max_dur=max_dur, top=s.hook_max_candidates,
+        target_duration=str(target_duration) if target_duration else None,
     )
     if not candidates:
-        raise RuntimeError("В видео не найдено ни одного связного фрагмента 35–55 с — попробуйте другое видео")
+        raise RuntimeError(
+            f"В видео не найдено ни одного связного фрагмента {min_dur:.0f}–{max_dur:.0f} с "
+            "— попробуйте другое видео или другую длительность"
+        )
     candidates = hook_scorer.llm_refine(candidates)
 
     # 3.5 P0/P1: превью-кадры 9:16 + 10-сек ролики для карточек (Opus Clip UX)
     previews = _make_hook_previews(session, job, candidates, ws)
 
     # 4. Сохраняем: таблица HookCandidate (канон) + params.candidates (портабельно для pull-воркера)
-    params = parse_params(job.params)
+    params = job_params
     portable = []
     for c in candidates:
         pv = previews.get(c.rank) or {}

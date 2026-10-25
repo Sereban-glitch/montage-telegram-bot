@@ -124,6 +124,8 @@ def process(session, job: Job) -> None:
             sfx=bool(params.get("sfx", False)),
             music=bool(params.get("music", False)),
             dub=bool(params.get("dub", False)),
+            # 🎬 Целевая длительность готового ролика (⚡60 / ⏱️90 / 🎬180 сек)
+            target_duration=params.get("target_duration", "short"),
         )
         download_source(session, ws, job)
         extract_audio(session, ws)

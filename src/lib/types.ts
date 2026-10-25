@@ -146,6 +146,9 @@ export interface ShortsParams {
   sfx: boolean; // 🥁 лёгкие SFX-акценты на склейках (процедурные, CC0)
   music: boolean; // 🎵 фоновая музыка с автоприглушением (sidechain)
   dub: boolean; // 🗣 авто-дубляж RU⇄UA (edge-tts + LLM-перевод)
+  // ── Целевая длительность готового ролика (⚡60 / ⏱️90 / 🎬180 сек) ──
+  // YouTube Shorts с 15.10.2024 — до 3 минут; пресеты синхронны с hook_scorer.py
+  target_duration: 'short' | 'standard' | 'deep';
 }
 
 export interface LongParams {
@@ -169,6 +172,7 @@ export const DEFAULT_SHORTS: ShortsParams = {
   sfx: false,
   music: false,
   dub: false,
+  target_duration: 'short',
 };
 
 export const DEFAULT_LONG: LongParams = {

@@ -1,7 +1,8 @@
 """AI Hook Finder & Scorer — интеллектуальное ядро Фичи №1.
 
-Находит в длинном видео (интервью, стрим, заседание, 20–60 мин) фрагменты 35–55 с
-с максимальным вирусным потенциалом и оценивает их Virality Score.
+Находит в длинном видео (интервью, стрим, заседание, 20–60 мин) фрагменты
+заданной целевой длительности с максимальным вирусным потенциалом и оценивает
+их Virality Score.
 
 Метод (детерминированный, бесплатный, работает офлайн):
   1. Сегментация: реплики Whisper склеиваются в предложения; окно кандидата
@@ -11,11 +12,19 @@
        completeness 0.25 — завершённость мысли (старт/финиш на границе предложения,
                             нет висячих союзов и отсылок «как я говорил»)
        emotion      0.25 — эмоциональный накал и юридическая острота (лексикон)
-       retention    0.20 — удержание: сладкая точка длительности, плотность речи,
+       retention    0.20 — удержание: сладкая точка длительности (адаптивна под
+                            target_duration), плотность речи,
                             штраф за паузы > 2.5 c внутри фрагмента
   3. Virality Score для показа пользователю: 58 + raw*0.41 → диапазон 60..99.
-  4. Фильтр разнообразия: без пересечений > 30 % и без соседних стартов < 60 с.
+  4. Фильтр разнообразия: без пересечений > 30 % и без соседних стартов < gap.
   5. Заголовок — правило-шаблоны на ключевых фразах фрагмента.
+
+Целевая длительность (отзыв владельца: «Почему 25–55 секунд, если Shorts в
+YouTube уже до 3 минут?» — YouTube разрешил вертикальные видео до 180 с
+с 15.10.2024):
+    short    35–60 с   — быстрый клип для TikTok / Reels / классического Shorts
+    standard 60–90 с   — стандартная мысль / комментарий
+    deep     90–180 с  — «Глубокий Shorts» для судов, интервью, разборов
 
 Опциональный LLM-рефайнер (если заданы MONTAGE_LLM_API_KEY/LLM_BASE_URL/LLM_MODEL):
 переписывает заголовки и корректирует порядок — деградирует в правила без ключа.
@@ -70,6 +79,44 @@ CONTINUATION_MARKERS = (  # фрагмент начинается как про�
 )
 
 DANGLING_ENDINGS = ("і", "й", "та", "або", "чи", "що", "як", "але", "та й", "а саме")
+
+
+# ----------------------------------------------------------------
+# Целевая длительность готовых Shorts (синхронно с DurationPicker в Mini App)
+# ----------------------------------------------------------------
+
+# Пресеты: target_duration → (min_dur, max_dur) в секундах.
+# ⚡ short    «До 60 сек»   — быстрый клип: TikTok / Reels / классический Shorts
+# ⏱️ standard «60–90 сек»  — стандартная мысль / комментарий
+# 🎬 deep     «До 3 минут»  — Глубокий Shorts: суды, интервью (YouTube Shorts 2026)
+DURATION_PRESETS: dict[str, tuple[float, float]] = {
+    "short": (35.0, 60.0),
+    "standard": (60.0, 90.0),
+    "deep": (90.0, 180.0),
+}
+
+DEFAULT_TARGET_DURATION = "short"
+
+
+def resolve_duration(target_duration: str | None) -> tuple[float, float]:
+    """target_duration из params задачи → (min_dur, max_dur) с защитой от мусора."""
+    key = (target_duration or DEFAULT_TARGET_DURATION).strip().lower()
+    return DURATION_PRESETS.get(key, DURATION_PRESETS[DEFAULT_TARGET_DURATION])
+
+
+def _sweet_spot(min_dur: float, max_dur: float) -> tuple[float, float]:
+    """Сладкая точка удержания под пресет.
+
+    Для дефолтного short (35–60) — ровно прежние константы (44 с / 7 с),
+    чтобы поведение по умолчанию не изменилось ни на йоту. Для остальных
+    пресетов центр чуть ниже середины диапазона, сигма пропорциональна ширине.
+    """
+    if (min_dur, max_dur) == DURATION_PRESETS["short"]:
+        return 44.0, 7.0
+    center = min_dur + (max_dur - min_dur) * 0.45
+    center = max(38.0, min(center, 150.0))
+    sigma = max(6.0, (max_dur - min_dur) / 6.0)
+    return center, sigma
 
 
 # ----------------------------------------------------------------
@@ -267,11 +314,12 @@ def score_emotion(text: str) -> float:
     return max(0.0, min(100.0, score))
 
 
-def score_retention(window: dict, sentences: list[dict]) -> float:
-    """Удержание: длительность, плотность речи, паузы."""
+def score_retention(window: dict, sentences: list[dict], center: float = 44.0,
+                    sigma: float = 7.0) -> float:
+    """Удержание: длительность (адаптивная сладкая точка), плотность речи, паузы."""
     dur = window["end"] - window["start"]
-    # сладкая точка 38–50 c (гауссиана вокруг 44)
-    dur_score = 100.0 * math.exp(-((dur - 44.0) ** 2) / (2 * 7.0 ** 2))
+    # гауссиана вокруг сладкой точки пресета (44 c для short, ~73 c для standard, ~132 c для deep)
+    dur_score = 100.0 * math.exp(-((dur - center) ** 2) / (2 * sigma ** 2))
     words = _words(window["text"])
     wps = len(words) / max(1.0, dur)  # слов в секунду
     if wps >= 1.8 and wps <= 3.2:
@@ -404,11 +452,16 @@ def _adaptive_gap(scored: list[Candidate], top: int) -> float:
 # ----------------------------------------------------------------
 
 def find_hooks(segments: list[dict], min_dur: float = 35.0, max_dur: float = 55.0,
-               top: int = 5) -> list[Candidate]:
+               top: int = 5, target_duration: str | None = None) -> list[Candidate]:
     """Whisper-сегменты → топ-N кандидатов с Virality Score.
 
     segments: [{"start": float, "end": float, "text": str}, ...]
+    target_duration: 'short' (35–60 с) | 'standard' (60–90 с) | 'deep' (90–180 с).
+    Если задан — перекрывает min_dur/max_dur пресетом из DURATION_PRESETS.
     """
+    if target_duration:
+        min_dur, max_dur = resolve_duration(target_duration)
+    center, sigma = _sweet_spot(min_dur, max_dur)
     sentences = group_sentences(segments)
     windows = build_windows(sentences, min_dur=min_dur, max_dur=max_dur)
     scored: list[Candidate] = []
@@ -421,7 +474,7 @@ def find_hooks(segments: list[dict], min_dur: float = 35.0, max_dur: float = 55.
         b_hook = score_hook(hook_text)
         b_comp = score_completeness(w, sentences)
         b_emo = score_emotion(w["text"])
-        b_ret = score_retention(w, sentences)
+        b_ret = score_retention(w, sentences, center=center, sigma=sigma)
         raw = 0.30 * b_hook + 0.25 * b_comp + 0.25 * b_emo + 0.20 * b_ret
         score = int(max(60, min(99, round(58 + raw * 0.41))))
         scored.append(Candidate(

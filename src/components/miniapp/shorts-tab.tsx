@@ -13,6 +13,7 @@ import type { ShortsParams, User } from '@/lib/types';
 import { DEFAULT_SHORTS } from '@/lib/types';
 import { SourcePicker, type SourceMode } from '@/components/miniapp/source-picker';
 import { OnboardingSteps } from '@/components/miniapp/onboarding-steps';
+import { DurationPicker } from '@/components/miniapp/duration-picker';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -325,14 +326,21 @@ export function ShortsTab({ user, onCreated }: { user: User; onCreated: () => vo
   return (
     <div className="md:grid md:grid-cols-[minmax(0,1fr)_360px] md:items-start md:gap-7 lg:grid-cols-[minmax(0,1fr)_420px]">
       <div className="space-y-6 pb-6">
-      {/* Закреплённый онбординг «3 шага» */}
-      <OnboardingSteps />
+      {/* Закреплённый онбординг «3 шага» — персональный для Shorts (без обещания «3 ролика») */}
+      <OnboardingSteps tab="shorts" />
 
       {/* Заголовок экрана */}
       <div className="space-y-1 px-1">
         <h2 className="text-[26px] font-bold leading-tight tracking-tight">{t.shorts.title}</h2>
         <p className="text-[13px] text-muted-foreground">{t.shorts.subtitle}</p>
       </div>
+
+      {/* Целевая длительность готового ролика: ⚡60 / ⏱️90 / 🎬180 сек (YouTube Shorts 2026) */}
+      <DurationPicker
+        value={params.target_duration}
+        onChange={(v) => set('target_duration', v)}
+        label={t.dur.shortsLabel}
+      />
 
       {/* Пресеты стиля «В 1 клик» */}
       <section className="space-y-2" aria-label={t.shorts.presetsLabel}>
